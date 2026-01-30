@@ -16,7 +16,7 @@ export async function registerRoutes(
   // === PROFILES ===
   app.get(api.profiles.me.path, isAuthenticated, async (req: any, res) => {
     const userId = req.user.claims.sub;
-    const profile = await storage.getProfile(userId);
+    const profile = await storage.getProfileWithDetails(userId);
     res.json(profile || null);
   });
 
@@ -39,6 +39,52 @@ export async function registerRoutes(
       } else {
         res.status(500).json({ message: "Internal server error" });
       }
+    }
+  });
+
+  app.patch(api.profiles.updateRole.path, isAuthenticated, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    try {
+      const input = api.profiles.updateRole.input.parse(req.body);
+      const profile = await storage.updateRole(userId, input.role);
+      res.json(profile);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.delete(api.profiles.delete.path, isAuthenticated, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    try {
+      const input = api.profiles.delete.input.parse(req.body);
+      if (input.confirmation !== 'DELETE') {
+        return res.status(400).json({ message: "Please type DELETE to confirm" });
+      }
+      
+      await storage.deleteAccount(userId);
+      res.json({ success: true, message: "Account deleted. Your posts remain anonymous." });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Delete account error:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.post(api.profiles.logoutAll.path, isAuthenticated, async (req: any, res) => {
+    const userId = req.user.claims.sub;
+    try {
+      await storage.clearUserSessions(userId);
+      res.json({ success: true, message: "All sessions have been logged out" });
+    } catch (err) {
+      console.error("Logout all error:", err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
