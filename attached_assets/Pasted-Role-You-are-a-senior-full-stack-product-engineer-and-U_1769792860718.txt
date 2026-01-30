@@ -1,0 +1,176 @@
+Role:
+You are a senior full-stack product engineer and UX architect.
+
+Goal:
+Design and build an MVP for a private, employee-only, anonymous social platform that provides psychological safety, peer support, and career help for employees — excluding founders, owners, and C-level executives.
+
+Core Principles (Non-Negotiable)
+
+Employees only (no founders, owners, CEOs, C-level executives).
+
+Anonymous by default — no public profiles or usernames.
+
+Verified privately, anonymous publicly.
+
+No naming or exposing individuals.
+
+Calm, safe, non-toxic UX (mental-health-aware design).
+
+Focus on support, awareness, and career help — not gossip.
+
+Target Users
+
+Individual contributors
+
+Team leads / managers without org-wide power
+
+Employees experiencing stress, burnout, or toxic culture
+
+Employees seeking referrals or exit support
+
+MVP Features (Build ONLY these 7)
+
+Employee Verification
+
+Work email or LinkedIn verification
+
+Mandatory role declaration
+
+Explicit exclusion of founders / C-level
+
+False declaration → ban
+
+Company-Based Private Communities
+
+One community per company
+
+Only verified employees of that company can access it
+
+Feed-style layout (posts + comments)
+
+Anonymous Posting & Commenting
+
+Posts and comments are anonymous
+
+Identity stored securely only for moderation
+
+No public profiles
+
+Mandatory Post Categories
+Each post must be tagged as one:
+
+Mental Stress / Burnout
+
+Toxic Work Culture
+
+Need Referral / Job Help
+
+Policy / Work Discussion
+
+General Experience
+
+Peer Support Interactions
+
+Comments
+
+Support reactions (💙 Support, 🤝 Helpful)
+
+No likes, followers, or popularity metrics
+
+Referral & Exit Help
+
+Dedicated “Looking for referral” post type
+
+Optional anonymous 1-to-1 messaging
+
+Simple “Helpful employee” indicator (non-gamified)
+
+Moderation & Safety System
+
+Report post/comment
+
+Auto-flag content naming individuals
+
+Admin dashboard to remove posts and ban users
+
+What NOT to Build
+
+No public company ratings
+
+No boss or individual name exposure
+
+No therapy, diagnosis, or counseling features
+
+No monetization
+
+No engagement manipulation (feeds, streaks, followers)
+
+UX / UI Requirements
+
+Minimal, calm, neutral UI
+
+Soft colors (grey, muted blue/green)
+
+No aggressive alerts or animations
+
+Mobile-first design
+
+Dark-mode friendly
+
+UX should feel safe, quiet, and respectful
+
+Technical Preferences
+
+(You may suggest alternatives, but keep it simple)
+
+Frontend: React / Next.js + Tailwind CSS
+
+Backend: Node.js (Express or NestJS)
+
+Database: PostgreSQL
+
+Auth: Firebase Auth or Auth0
+
+Hosting: Vercel (frontend), AWS / Render / Railway (backend)
+
+Deliverables
+
+System architecture overview
+
+Database schema (users, companies, posts, comments, reports)
+
+API design
+
+Core UI wireframes (Signup, Feed, Create Post, Comments, Report)
+
+Moderation logic
+
+Clear assumptions & risks
+
+Success Definition
+
+The platform should allow an employee to:
+
+Verify safely
+
+Enter their company space
+
+Post anonymously about stress or culture
+
+Receive peer support
+
+Ask for a referral
+
+Feel safer than LinkedIn, Reddit, or Blind
+
+Tone & Ethics
+
+Employee-first
+
+Trauma-aware
+
+Legally cautious
+
+Calm, not revolutionary
+
+Healing-focused, not confrontational
