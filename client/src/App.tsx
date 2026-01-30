@@ -12,6 +12,7 @@ import Landing from "@/pages/Landing";
 import Feed from "@/pages/Feed";
 import PostDetail from "@/pages/PostDetail";
 import Onboarding from "@/pages/Onboarding";
+import Profile from "@/pages/Profile";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading: authLoading } = useAuth();
@@ -39,6 +40,7 @@ function Router() {
     <Switch>
       <Route path="/" component={() => <ProtectedRoute component={Feed} />} />
       <Route path="/posts/:id" component={() => <ProtectedRoute component={PostDetail} />} />
+      <Route path="/profile" component={() => <ProtectedRoute component={Profile} />} />
       <Route component={NotFound} />
     </Switch>
   );

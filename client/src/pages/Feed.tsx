@@ -6,7 +6,8 @@ import { CreatePostDialog } from "@/components/CreatePostDialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { POST_CATEGORIES } from "@shared/schema";
-import { LogOut, LayoutGrid, Filter } from "lucide-react";
+import { LogOut, LayoutGrid, Filter, User } from "lucide-react";
+import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 
 export default function Feed() {
@@ -23,10 +24,18 @@ export default function Feed() {
             <LayoutGrid className="w-6 h-6 text-primary" />
             <span className="font-display font-bold text-lg">Company Feed</span>
           </div>
-          <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive">
-            <LogOut className="w-4 h-4 mr-2" />
-            Log out
-          </Button>
+          <div className="flex items-center gap-2">
+            <Link href="/profile">
+              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" data-testid="button-profile">
+                <User className="w-4 h-4 mr-2" />
+                Profile
+              </Button>
+            </Link>
+            <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive" data-testid="button-logout">
+              <LogOut className="w-4 h-4 mr-2" />
+              Log out
+            </Button>
+          </div>
         </div>
       </header>
 

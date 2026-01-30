@@ -40,3 +40,67 @@ export function useCreateProfile() {
     },
   });
 }
+
+export function useUpdateRole() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { role: string }) => {
+      const res = await fetch(api.profiles.updateRole.path, {
+        method: api.profiles.updateRole.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        if (res.status === 400) {
+          const error = api.profiles.updateRole.responses[400].parse(await res.json());
+          throw new Error(error.message);
+        }
+        throw new Error("Failed to update role");
+      }
+      return api.profiles.updateRole.responses[200].parse(await res.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.profiles.me.path] });
+    },
+  });
+}
+
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: async (data: { confirmation: "DELETE" }) => {
+      const res = await fetch(api.profiles.delete.path, {
+        method: api.profiles.delete.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        if (res.status === 400) {
+          const error = api.profiles.delete.responses[400].parse(await res.json());
+          throw new Error(error.message);
+        }
+        throw new Error("Failed to delete account");
+      }
+      return api.profiles.delete.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useLogoutAll() {
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch(api.profiles.logoutAll.path, {
+        method: api.profiles.logoutAll.method,
+        credentials: "include",
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to logout all sessions");
+      }
+      return api.profiles.logoutAll.responses[200].parse(await res.json());
+    },
+  });
+}
