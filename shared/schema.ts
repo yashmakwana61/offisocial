@@ -24,12 +24,18 @@ export const companies = pgTable("companies", {
 // However, the auth blueprint says "don't drop it". 
 // To avoid conflicts, I'll create a `profiles` table that 1:1 maps to `users`.
 
+export const ACCOUNT_STATUSES = ["active", "under_review", "restricted"] as const;
+
 export const profiles = pgTable("profiles", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull().unique(), // FK to users.id
   companyId: integer("company_id").references(() => companies.id),
-  role: text("role"), // "Product Designer", "Engineer" - self declared
+  role: text("role"), // "Product Designer", "Engineer" - self declared, max 50 chars
   isVerified: boolean("is_verified").default(false),
+  accountStatus: text("account_status", { enum: ACCOUNT_STATUSES }).default("active"),
+  statusReason: text("status_reason"), // Reason if restricted (generic, non-accusatory)
+  isDeleted: boolean("is_deleted").default(false), // Soft delete flag
+  deletedAt: timestamp("deleted_at"),
   joinedAt: timestamp("joined_at").defaultNow(),
 });
 
@@ -108,7 +114,8 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
 
 // === ZOD SCHEMAS ===
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true });
-export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, isVerified: true, joinedAt: true });
+export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, isVerified: true, accountStatus: true, statusReason: true, isDeleted: true, deletedAt: true, joinedAt: true });
+export const updateRoleSchema = z.object({ role: z.string().min(2).max(50) });
 export const insertPostSchema = createInsertSchema(posts).omit({ id: true, authorId: true, companyId: true, createdAt: true, updatedAt: true });
 export const insertCommentSchema = createInsertSchema(comments).omit({ id: true, authorId: true, postId: true, createdAt: true });
 export const insertReportSchema = createInsertSchema(reports).omit({ id: true, reporterId: true, status: true, createdAt: true });

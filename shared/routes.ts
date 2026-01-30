@@ -29,7 +29,7 @@ export const api = {
       method: 'GET' as const,
       path: '/api/profiles/me',
       responses: {
-        200: z.custom<typeof profiles.$inferSelect>().nullable(),
+        200: z.custom<typeof profiles.$inferSelect & { companyName: string; maskedEmail: string }>().nullable(),
         401: errorSchemas.unauthorized,
       },
     },
@@ -37,12 +37,41 @@ export const api = {
       method: 'POST' as const,
       path: '/api/profiles',
       input: z.object({
-        role: z.string().min(2),
-        companyName: z.string().min(2), // We'll look up or create company
+        role: z.string().min(2).max(50),
+        companyName: z.string().min(2),
       }),
       responses: {
         201: z.custom<typeof profiles.$inferSelect>(),
         400: errorSchemas.validation,
+      },
+    },
+    updateRole: {
+      method: 'PATCH' as const,
+      path: '/api/profiles/role',
+      input: z.object({
+        role: z.string().min(2).max(50),
+      }),
+      responses: {
+        200: z.custom<typeof profiles.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    delete: {
+      method: 'DELETE' as const,
+      path: '/api/profiles/me',
+      input: z.object({
+        confirmation: z.literal('DELETE'),
+      }),
+      responses: {
+        200: z.object({ success: z.boolean(), message: z.string() }),
+        400: errorSchemas.validation,
+      },
+    },
+    logoutAll: {
+      method: 'POST' as const,
+      path: '/api/profiles/logout-all',
+      responses: {
+        200: z.object({ success: z.boolean(), message: z.string() }),
       },
     },
   },
