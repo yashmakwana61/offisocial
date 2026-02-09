@@ -1,25 +1,33 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { createApp } from "../server/app";
 
-let appPromise: ReturnType<typeof createApp> | null = null;
-
-async function getApp() {
-    if (!appPromise) {
-        appPromise = createApp();
-    }
-
-    return appPromise;
-}
+let app: any;
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({
-        status: "ok",
-        message: "Minimal Vercel handler works",
-        env: process.env.NODE_ENV,
-        time: new Date().toISOString()
-    }));
-    const app = await getApp();
-    return app(req, res);
+    try {
+        if (!app) {
+            console.log("Vercel Startup: Importing createApp...");
+            // Using dynamic import to catch errors during module loading
+            const { createApp } = await import("../server/app");
+            console.log("Vercel Startup: Creating Express app...");
+            app = await createApp();
+        }
+
+        // Express app(req, res) handles the request
+        return app(req, res);
+    } catch (err: any) {
+        console.error("CRITICAL VERCEL BOOT ERROR:", err);
+
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json');
+        return res.end(JSON.stringify({
+            error: "Vercel Boot Error",
+            message: err?.message || String(err),
+            stack: err?.stack || "No stack trace",
+            env: {
+                node_env: process.env.NODE_ENV,
+                has_db: !!process.env.DATABASE_URL,
+                has_session_secret: !!process.env.SESSION_SECRET
+            }
+        }));
+    }
 }
