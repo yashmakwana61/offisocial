@@ -24,19 +24,28 @@ export const companies = pgTable("companies", {
 // However, the auth blueprint says "don't drop it". 
 // To avoid conflicts, I'll create a `profiles` table that 1:1 maps to `users`.
 
-export const ACCOUNT_STATUSES = ["active", "under_review", "restricted"] as const;
+export const ACCOUNT_STATUSES = ["pending", "verified_limited", "verified_full", "restricted"] as const;
+
+export const VERIFICATION_STEPS = ["oauth_completed", "url_submitted", "extraction_pending", "completed"] as const;
 
 export const profiles = pgTable("profiles", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull().unique(), // FK to users.id
+  hashedLinkedinId: text("hashed_linkedin_id").unique(), // For 1-account-per-person enforcement
   companyId: integer("company_id").references(() => companies.id),
-  role: text("role"), // "Product Designer", "Engineer" - self declared, max 50 chars
-  isVerified: boolean("is_verified").default(false),
-  accountStatus: text("account_status", { enum: ACCOUNT_STATUSES }).default("active"),
-  statusReason: text("status_reason"), // Reason if restricted (generic, non-accusatory)
-  isDeleted: boolean("is_deleted").default(false), // Soft delete flag
-  deletedAt: timestamp("deleted_at"),
+  role: text("role"), // User self-declared or extracted
+  extractedRole: text("extracted_role"), // Role from LinkedIn scraper
+  extractedCompany: text("extracted_company"), // Company from LinkedIn scraper
+  linkedinUrlEncrypted: text("linkedin_url_encrypted"), // Encrypted string
+  accountStatus: text("account_status", { enum: ACCOUNT_STATUSES }).default("pending"),
+  verificationStep: text("verification_step", { enum: VERIFICATION_STEPS }).default("oauth_completed"),
+  statusReason: text("status_reason"), // Reason if restricted
+  isLinkedInVisible: boolean("is_linkedin_visible").default(false), // Consent to exchange
+  lastVerifiedAt: timestamp("last_verified_at").defaultNow(),
   joinedAt: timestamp("joined_at").defaultNow(),
+  isExitMode: boolean("is_exit_mode").default(false),
+  isDeleted: boolean("is_deleted").default(false),
+  deletedAt: timestamp("deleted_at"),
 });
 
 // === POSTS ===
@@ -114,7 +123,7 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
 
 // === ZOD SCHEMAS ===
 export const insertCompanySchema = createInsertSchema(companies).omit({ id: true, createdAt: true });
-export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, isVerified: true, accountStatus: true, statusReason: true, isDeleted: true, deletedAt: true, joinedAt: true });
+export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true, userId: true, accountStatus: true, statusReason: true, isLinkedInVisible: true, isExitMode: true, isDeleted: true, deletedAt: true, joinedAt: true });
 export const updateRoleSchema = z.object({ role: z.string().min(2).max(50) });
 export const insertPostSchema = createInsertSchema(posts).omit({ id: true, authorId: true, companyId: true, createdAt: true, updatedAt: true });
 export const insertCommentSchema = createInsertSchema(comments).omit({ id: true, authorId: true, postId: true, createdAt: true });
@@ -130,3 +139,35 @@ export type Report = typeof reports.$inferSelect;
 
 export type CreatePostInput = z.infer<typeof insertPostSchema>;
 export type CreateCommentInput = z.infer<typeof insertCommentSchema>;
+
+// === WEEKLY CHECK-INS ===
+export const weeklyCheckins = pgTable("weekly_checkins", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(), // Kept for rate limiting (1/week), never joined for reading
+  companyId: integer("company_id").notNull().references(() => companies.id),
+  moodScore: integer("mood_score").notNull(), // 1-5 or similar
+  content: text("content"), // Optional text feedback
+  categories: text("categories").array(), // e.g., ["Workload", "Management"]
+  weekStartDate: timestamp("week_start_date").notNull(), // To easily identify the week
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === LINKEDIN EXCHANGES ===
+export const linkedinExchanges = pgTable("linkedin_exchanges", {
+  id: serial("id").primaryKey(),
+  requesterId: text("requester_id").notNull(), // User who requested
+  recipientId: text("recipient_id").notNull(), // User who was asked
+  status: text("status", { enum: ["pending", "accepted", "rejected", "expired"] }).default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// === NEW ZOD SCHEMAS ===
+export const insertWeeklyCheckinSchema = createInsertSchema(weeklyCheckins).omit({ id: true, createdAt: true });
+export const insertLinkedinExchangeSchema = createInsertSchema(linkedinExchanges).omit({ id: true, createdAt: true, updatedAt: true });
+
+// === NEW TYPES ===
+export type WeeklyCheckin = typeof weeklyCheckins.$inferSelect;
+export type LinkedinExchange = typeof linkedinExchanges.$inferSelect;
+export type CreateWeeklyCheckinInput = z.infer<typeof insertWeeklyCheckinSchema>;

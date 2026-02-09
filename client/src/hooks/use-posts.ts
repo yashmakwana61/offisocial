@@ -1,14 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl, type CreatePostInput, type CreateCommentInput } from "@shared/routes";
+import { api, buildUrl } from "@shared/routes";
+import { type CreatePostInput, type CreateCommentInput } from "@shared/schema";
 
 export function usePosts(category?: string) {
   return useQuery({
     queryKey: [api.posts.list.path, category],
     queryFn: async () => {
-      const url = category 
+      const url = category
         ? `${api.posts.list.path}?category=${encodeURIComponent(category)}`
         : api.posts.list.path;
-        
+
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch posts");
       return api.posts.list.responses[200].parse(await res.json());
@@ -39,7 +40,7 @@ export function useCreatePost() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      
+
       if (!res.ok) throw new Error("Failed to create post");
       return api.posts.create.responses[201].parse(await res.json());
     },
@@ -56,14 +57,14 @@ export function useCreateComment() {
       const url = buildUrl(api.comments.create.path, { id: postId });
       // Construct CreateCommentInput explicitly (omitting auto-generated fields)
       const payload: CreateCommentInput = { content };
-      
+
       const res = await fetch(url, {
         method: api.comments.create.method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
         credentials: "include",
       });
-      
+
       if (!res.ok) throw new Error("Failed to create comment");
       return api.comments.create.responses[201].parse(await res.json());
     },
@@ -84,7 +85,7 @@ export function useToggleReaction() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      
+
       if (!res.ok) throw new Error("Failed to toggle reaction");
       return res.json();
     },
@@ -95,7 +96,7 @@ export function useToggleReaction() {
       } else {
         // Ideally we'd know the post ID for comment invalidation, but this is okay for now
         // React Query's exact: false matching could help if structured hierarchically
-        queryClient.invalidateQueries({ queryKey: [api.posts.get.path] }); 
+        queryClient.invalidateQueries({ queryKey: [api.posts.get.path] });
       }
     },
   });

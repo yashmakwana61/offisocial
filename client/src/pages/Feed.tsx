@@ -1,106 +1,78 @@
 import { useState } from "react";
-import { usePosts } from "@/hooks/use-posts";
 import { useAuth } from "@/hooks/use-auth";
-import { PostCard } from "@/components/PostCard";
-import { CreatePostDialog } from "@/components/CreatePostDialog";
+import { useProfile } from "@/hooks/use-profiles";
+import CategoryFilter from "@/components/feed/CategoryFilter";
+import PostList from "@/components/feed/PostList";
+import WeeklyPrompt from "@/components/reality-check/WeeklyPrompt";
+import ResultsView from "@/components/reality-check/ResultsView";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { POST_CATEGORIES } from "@shared/schema";
-import { LogOut, LayoutGrid, Filter, User } from "lucide-react";
-import { Link } from "wouter";
-import { cn } from "@/lib/utils";
+import { Plus } from "lucide-react";
+import { useLocation } from "wouter";
+import { AnimatePresence, motion } from "framer-motion";
+
+import { CreatePostDialog } from "@/components/CreatePostDialog";
 
 export default function Feed() {
-  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
-  const { data: posts, isLoading } = usePosts(selectedCategory);
-  const { logout } = useAuth();
+  const { user } = useAuth();
+  const { data: profile } = useProfile();
+  const [category, setCategory] = useState<string | null>(null);
+  const [hasSubmittedCheck, setHasSubmittedCheck] = useState(false);
+  const [, setLocation] = useLocation();
 
   return (
-    <div className="min-h-screen bg-muted/20 pb-20">
+    <div className="min-h-screen bg-background pb-24 md:pb-20">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border/50">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <LayoutGrid className="w-6 h-6 text-primary" />
-            <span className="font-display font-bold text-lg">Company Feed</span>
+      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
+        <div className="max-w-2xl lg:max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+          <h1 className="font-display font-bold text-xl sm:text-2xl tracking-tight">Feed</h1>
+          <div
+            className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/10 flex items-center justify-center cursor-pointer hover:bg-primary/20 transition-colors"
+            onClick={() => setLocation("/profile")}
+          >
+            <span className="font-medium text-xs sm:text-sm text-primary">
+              {profile?.role ? profile.role.charAt(0).toUpperCase() : "M"}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href="/profile">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" data-testid="button-profile">
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </Button>
-            </Link>
-            <Button variant="ghost" size="sm" onClick={() => logout()} className="text-muted-foreground hover:text-destructive" data-testid="button-logout">
-              <LogOut className="w-4 h-4 mr-2" />
-              Log out
-            </Button>
-          </div>
+        </div>
+
+        <div className="max-w-2xl lg:max-w-4xl mx-auto px-4 sm:px-6 pb-3">
+          <CategoryFilter selected={category} onSelect={setCategory} />
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 pt-8">
-        <div className="flex flex-col sm:flex-row gap-6 mb-8 items-start sm:items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">Community</h1>
-            <p className="text-muted-foreground">Anonymous discussions from your company.</p>
-          </div>
-          <CreatePostDialog />
-        </div>
+      {/* Main Content */}
+      <main className="max-w-2xl lg:max-w-4xl mx-auto px-4 sm:px-6 pt-6 space-y-6 md:space-y-8">
+        {/* Reality Check Section */}
+        <section>
+          <AnimatePresence mode="wait">
+            {!hasSubmittedCheck ? (
+              <motion.div
+                key="prompt"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <WeeklyPrompt onSubmit={() => setHasSubmittedCheck(true)} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="results"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+              >
+                <ResultsView />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </section>
 
-        {/* Categories */}
-        <div className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide">
-          <Button 
-            variant={!selectedCategory ? "secondary" : "outline"}
-            className={cn("rounded-full whitespace-nowrap", !selectedCategory && "bg-primary text-primary-foreground hover:bg-primary/90")}
-            onClick={() => setSelectedCategory(undefined)}
-          >
-            All Posts
-          </Button>
-          {POST_CATEGORIES.map((cat) => (
-            <Button
-              key={cat}
-              variant={selectedCategory === cat ? "secondary" : "outline"}
-              className={cn("rounded-full whitespace-nowrap", selectedCategory === cat && "bg-primary text-primary-foreground hover:bg-primary/90")}
-              onClick={() => setSelectedCategory(cat)}
-            >
-              {cat}
-            </Button>
-          ))}
-        </div>
-
-        {/* Feed List */}
-        <div className="space-y-6">
-          {isLoading ? (
-            Array(3).fill(0).map((_, i) => (
-              <div key={i} className="p-6 bg-card rounded-2xl border border-border/50 space-y-4">
-                <div className="flex justify-between">
-                   <Skeleton className="h-4 w-24 rounded-full" />
-                   <Skeleton className="h-4 w-12 rounded-full" />
-                </div>
-                <Skeleton className="h-20 w-full rounded-xl" />
-                <div className="flex gap-4 pt-2">
-                  <Skeleton className="h-8 w-16 rounded-full" />
-                  <Skeleton className="h-8 w-16 rounded-full" />
-                </div>
-              </div>
-            ))
-          ) : posts?.length === 0 ? (
-            <div className="text-center py-20 bg-card rounded-3xl border border-border/50 border-dashed">
-              <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-                <Filter className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <h3 className="text-xl font-bold mb-2">No posts yet</h3>
-              <p className="text-muted-foreground mb-6">Be the first to share your thoughts.</p>
-              <CreatePostDialog />
-            </div>
-          ) : (
-            posts?.map((post) => (
-              <PostCard key={post.id} post={post} compact />
-            ))
-          )}
-        </div>
+        <PostList category={category} />
       </main>
+
+      {/* Floating Action Button - responsive positioning */}
+      <div className="fixed bottom-6 right-4 sm:right-6 md:bottom-8 md:right-8 lg:right-[calc(50%-20rem)] z-40">
+        <CreatePostDialog />
+      </div>
     </div>
   );
 }

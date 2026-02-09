@@ -1,12 +1,12 @@
-import { 
-  users, profiles, companies, posts, comments, reactions, reports, sessions,
+import {
+  users, profiles, companies, posts, comments, reactions, reports, sessions, weeklyCheckins, linkedinExchanges,
   type User, type Profile, type Company, type Post, type Comment, type Reaction, type Report,
-  type CreatePostInput, type CreateCommentInput,
+  type CreatePostInput, type CreateCommentInput, type CreateWeeklyCheckinInput,
+  type WeeklyCheckin, type LinkedinExchange,
   type UpsertUser
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql, inArray, like } from "drizzle-orm";
-import { authStorage } from "./replit_integrations/auth";
 
 function maskEmail(email: string | null): string {
   if (!email) return "***@***.***";
@@ -21,38 +21,77 @@ function maskEmail(email: string | null): string {
 export interface IStorage {
   // Auth & Profile
   getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
   getProfile(userId: string): Promise<Profile | undefined>;
+  getProfileByHashedId(hashedId: string): Promise<Profile | undefined>;
   getProfileWithDetails(userId: string): Promise<(Profile & { companyName: string; maskedEmail: string }) | undefined>;
-  createProfile(userId: string, role: string, companyName: string): Promise<Profile>;
+  createProfile(userId: string, role: string, companyName: string, hashedLinkedinId?: string, status?: Profile["accountStatus"]): Promise<Profile>;
+  updateProfileVerification(userId: string, updates: Partial<Profile>): Promise<Profile>;
   updateRole(userId: string, role: string): Promise<Profile>;
   deleteAccount(userId: string): Promise<void>;
   clearUserSessions(userId: string): Promise<void>;
-  
+
   // Companies
   getCompany(id: number): Promise<Company | undefined>;
   getCompanyByName(name: string): Promise<Company | undefined>;
-  
+
   // Posts
   getCompanyPosts(companyId: number, userId: string, category?: string): Promise<(Post & { commentCount: number; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
   getPost(id: number, userId: string): Promise<(Post & { reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null }) | undefined>;
   createPost(userId: string, companyId: number, post: CreatePostInput): Promise<Post>;
-  
+
   // Comments
   getPostComments(postId: number, userId: string): Promise<(Comment & { reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
   createComment(userId: string, postId: number, comment: CreateCommentInput): Promise<Comment>;
-  
+
   // Reactions
   toggleReaction(userId: string, targetType: 'post' | 'comment', targetId: number, type: 'support' | 'helpful'): Promise<{ action: 'added' | 'removed' }>;
+
+  // Weekly Check-ins
+  createWeeklyCheckin(userId: string, companyId: number, input: CreateWeeklyCheckinInput): Promise<WeeklyCheckin>;
+  getWeeklyCheckin(userId: string, weekStartDate: Date): Promise<WeeklyCheckin | undefined>;
+  getAggregatedCheckins(companyId: number, weekStartDate: Date): Promise<{ averageMood: number; totalCheckins: number; categoryCounts: Record<string, number> }>;
+
+  // LinkedIn Exchanges
+  createExchangeRequest(requesterId: string, recipientId: string): Promise<LinkedinExchange>;
+  getExchangeRequest(id: number): Promise<LinkedinExchange | undefined>;
+  respondToExchange(id: number, status: 'accepted' | 'rejected'): Promise<LinkedinExchange>;
+
+  // Reports
+  createReport(userId: string, targetType: 'post' | 'comment', targetId: number, reason: string): Promise<Report>;
 }
 
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    return authStorage.getUser(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(userData)
+      .onConflictDoUpdate({
+        target: users.id,
+        set: {
+          ...userData,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return user;
   }
 
   async getProfile(userId: string): Promise<Profile | undefined> {
     const [profile] = await db.select().from(profiles).where(
       and(eq(profiles.userId, userId), eq(profiles.isDeleted, false))
+    );
+    return profile;
+  }
+
+  async getProfileByHashedId(hashedId: string): Promise<Profile | undefined> {
+    const [profile] = await db.select().from(profiles).where(
+      and(eq(profiles.hashedLinkedinId, hashedId), eq(profiles.isDeleted, false))
     );
     return profile;
   }
@@ -105,9 +144,9 @@ export class DatabaseStorage implements IStorage {
 
   async clearUserSessions(userId: string): Promise<void> {
     // Delete all sessions where the user ID is in the session data
-    // The sess column is jsonb and contains user.claims.sub
+    // The sess column is jsonb and contains user.id
     await db.delete(sessions).where(
-      sql`${sessions.sess}::jsonb->'passport'->'user'->'claims'->>'sub' = ${userId}`
+      sql`${sessions.sess}::jsonb->'passport'->'user'->>'id' = ${userId}`
     );
   }
 
@@ -121,7 +160,7 @@ export class DatabaseStorage implements IStorage {
     return company;
   }
 
-  async createProfile(userId: string, role: string, companyName: string): Promise<Profile> {
+  async createProfile(userId: string, role: string, companyName: string, hashedLinkedinId?: string, status: Profile["accountStatus"] = "pending"): Promise<Profile> {
     // Find or create company
     let company = await this.getCompanyByName(companyName);
     if (!company) {
@@ -136,21 +175,138 @@ export class DatabaseStorage implements IStorage {
       userId,
       companyId: company.id,
       role,
-      isVerified: true, // Auto-verify for MVP demo
+      hashedLinkedinId,
+      accountStatus: status,
+      verificationStep: status === "verified_full" ? "completed" : "oauth_completed",
+      joinedAt: new Date(),
     }).returning();
-    
     return profile;
+  }
+
+  async updateProfileVerification(userId: string, updates: Partial<Profile>): Promise<Profile> {
+    const [updated] = await db.update(profiles)
+      .set({
+        ...updates,
+        lastVerifiedAt: updates.accountStatus?.includes("verified") ? new Date() : undefined,
+      })
+      .where(eq(profiles.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async createWeeklyCheckin(userId: string, companyId: number, input: CreateWeeklyCheckinInput): Promise<WeeklyCheckin> {
+    const [checkin] = await db.insert(weeklyCheckins).values({
+      ...input,
+      userId,
+      companyId,
+    }).returning();
+    return checkin;
+  }
+
+  async getWeeklyCheckin(userId: string, weekStartDate: Date): Promise<WeeklyCheckin | undefined> {
+    const [checkin] = await db.select().from(weeklyCheckins).where(and(
+      eq(weeklyCheckins.userId, userId),
+      eq(weeklyCheckins.weekStartDate, weekStartDate)
+    ));
+    return checkin;
+  }
+
+  async getAggregatedCheckins(companyId: number, weekStartDate: Date): Promise<{ averageMood: number; totalCheckins: number; categoryCounts: Record<string, number>; moodCounts: { moodScore: number; count: number }[] }> {
+    const checkins = await db.select().from(weeklyCheckins).where(and(
+      eq(weeklyCheckins.companyId, companyId),
+      eq(weeklyCheckins.weekStartDate, weekStartDate)
+    ));
+
+    if (checkins.length === 0) {
+      return { averageMood: 0, totalCheckins: 0, categoryCounts: {}, moodCounts: [] };
+    }
+
+    const totalMood = checkins.reduce((sum, c) => sum + c.moodScore, 0);
+    const categoryCounts: Record<string, number> = {};
+    const moodCountsMap: Record<number, number> = {};
+
+    checkins.forEach(c => {
+      // Categories
+      if (c.categories) {
+        c.categories.forEach(cat => {
+          categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
+        });
+      }
+
+      // Mood Counts
+      moodCountsMap[c.moodScore] = (moodCountsMap[c.moodScore] || 0) + 1;
+    });
+
+    const moodCounts = Object.entries(moodCountsMap).map(([score, count]) => ({
+      moodScore: Number(score),
+      count
+    }));
+
+    return {
+      averageMood: totalMood / checkins.length,
+      totalCheckins: checkins.length,
+      categoryCounts,
+      moodCounts
+    };
+  }
+
+  async createExchangeRequest(requesterId: string, recipientId: string): Promise<LinkedinExchange> {
+    // Check if pending exists
+    const [existing] = await db.select().from(linkedinExchanges).where(and(
+      eq(linkedinExchanges.requesterId, requesterId),
+      eq(linkedinExchanges.recipientId, recipientId),
+      eq(linkedinExchanges.status, 'pending')
+    ));
+
+    if (existing) return existing;
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 day expiry
+
+    const [request] = await db.insert(linkedinExchanges).values({
+      requesterId,
+      recipientId,
+      expiresAt,
+    }).returning();
+    return request;
+  }
+
+  async getExchangeRequest(id: number): Promise<LinkedinExchange | undefined> {
+    const [request] = await db.select().from(linkedinExchanges).where(eq(linkedinExchanges.id, id));
+    return request;
+  }
+
+  async respondToExchange(id: number, status: 'accepted' | 'rejected'): Promise<LinkedinExchange> {
+    const [updated] = await db.update(linkedinExchanges)
+      .set({ status })
+      .where(eq(linkedinExchanges.id, id))
+      .returning();
+    return updated;
+  }
+
+  async createReport(userId: string, targetType: 'post' | 'comment', targetId: number, reason: string): Promise<Report> {
+    const [report] = await db.insert(reports).values({
+      targetType,
+      targetId,
+      reporterId: userId,
+      reason
+    }).returning();
+    return report;
   }
 
   async getCompanyPosts(companyId: number, userId: string, category?: string): Promise<any[]> {
     const conditions = [eq(posts.companyId, companyId)];
     if (category) {
-      conditions.push(eq(posts.category, category));
+      conditions.push(eq(posts.category, category as any));
     }
 
     const postsList = await db.select().from(posts)
       .where(and(...conditions))
       .orderBy(desc(posts.createdAt));
+
+    // Exit Mode prioritization logic could be added here
+    // e.g., if user is in Exit Mode, boost posts with category "Policy / Work Discussion" or similar?
+    // For now, we return standard feed. 
 
     // For each post, get counts and user reaction
     // N+1 query problem here but okay for MVP scale
@@ -159,9 +315,9 @@ export class DatabaseStorage implements IStorage {
         .select({ count: sql<number>`count(*)` })
         .from(comments)
         .where(eq(comments.postId, post.id));
-        
+
       const reactionStats = await this.getReactionStats('post', post.id, userId);
-      
+
       return {
         ...post,
         commentCount: Number(commentCount.count),
@@ -178,7 +334,7 @@ export class DatabaseStorage implements IStorage {
     if (!post) return undefined;
 
     const reactionStats = await this.getReactionStats('post', post.id, userId);
-    
+
     return {
       ...post,
       reactionCounts: reactionStats.counts,

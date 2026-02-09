@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertPostSchema, insertCommentSchema, insertReportSchema, posts, comments, companies, profiles } from './schema';
+import { insertPostSchema, insertCommentSchema, insertReportSchema, insertWeeklyCheckinSchema, insertLinkedinExchangeSchema, posts, comments, companies, profiles, weeklyCheckins, linkedinExchanges, reports } from './schema';
 
 // ============================================
 // SHARED ERROR SCHEMAS
@@ -83,8 +83,8 @@ export const api = {
         category: z.string().optional(),
       }).optional(),
       responses: {
-        200: z.array(z.custom<typeof posts.$inferSelect & { 
-          commentCount: number; 
+        200: z.array(z.custom<typeof posts.$inferSelect & {
+          commentCount: number;
           reactionCounts: { support: number; helpful: number };
           userReaction: 'support' | 'helpful' | null;
         }>()),
@@ -97,8 +97,8 @@ export const api = {
       responses: {
         200: z.custom<typeof posts.$inferSelect & {
           comments: (typeof comments.$inferSelect & {
-             reactionCounts: { support: number; helpful: number };
-             userReaction: 'support' | 'helpful' | null;
+            reactionCounts: { support: number; helpful: number };
+            userReaction: 'support' | 'helpful' | null;
           })[];
           reactionCounts: { support: number; helpful: number };
           userReaction: 'support' | 'helpful' | null;
@@ -140,6 +140,69 @@ export const api = {
         200: z.object({ success: z.boolean(), action: z.enum(['added', 'removed']) }),
       },
     },
+  },
+  weeklyCheckins: {
+    create: {
+      method: 'POST' as const,
+      path: '/api/checkins',
+      input: insertWeeklyCheckinSchema,
+      responses: {
+        201: z.custom<typeof weeklyCheckins.$inferSelect>(),
+        400: errorSchemas.validation,
+      }
+    },
+    getMine: {
+      method: 'GET' as const,
+      path: '/api/checkins/mine',
+      responses: {
+        200: z.custom<typeof weeklyCheckins.$inferSelect | undefined>().nullable(),
+      }
+    },
+    getAggregated: {
+      method: 'GET' as const,
+      path: '/api/checkins/aggregated',
+      responses: {
+        200: z.object({
+          averageMood: z.number(),
+          totalCheckins: z.number(),
+          categoryCounts: z.record(z.number()),
+          moodCounts: z.array(z.object({
+            moodScore: z.number(),
+            count: z.number(),
+          })),
+        }),
+      }
+    }
+  },
+  exchange: {
+    request: {
+      method: 'POST' as const,
+      path: '/api/exchange/request',
+      input: z.object({ recipientId: z.string() }),
+      responses: {
+        201: z.custom<typeof linkedinExchanges.$inferSelect>(),
+        400: errorSchemas.validation,
+      }
+    },
+    respond: {
+      method: 'POST' as const,
+      path: '/api/exchange/:id/respond',
+      input: z.object({ status: z.enum(['accepted', 'rejected']) }),
+      responses: {
+        200: z.custom<typeof linkedinExchanges.$inferSelect>(),
+      }
+    }
+  },
+  reports: {
+    create: {
+      method: 'POST' as const,
+      path: '/api/reports',
+      input: insertReportSchema,
+      responses: {
+        201: z.custom<typeof reports.$inferSelect>(),
+        400: errorSchemas.validation,
+      }
+    }
   },
 };
 

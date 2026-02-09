@@ -12,7 +12,9 @@ import Landing from "@/pages/Landing";
 import Feed from "@/pages/Feed";
 import PostDetail from "@/pages/PostDetail";
 import Onboarding from "@/pages/Onboarding";
+import BlockedRole from "@/pages/BlockedRole";
 import Profile from "@/pages/Profile";
+import Stories from "@/pages/Stories";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading: authLoading } = useAuth();
@@ -27,10 +29,14 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
 
   if (!user) return <Landing />;
-  
-  // If authenticated but no profile, force onboarding
-  // We use profile === null check because the API returns null for 200 OK if no profile found
-  if (user && !profile) return <Onboarding />;
+
+  // If authenticated but no profile or profile is pending verification, force onboarding
+  const isPending = profile?.accountStatus === "pending";
+  const isRestricted = profile?.accountStatus === "restricted";
+
+  if (user && (!profile || isPending || isRestricted)) {
+    return <Onboarding />;
+  }
 
   return <Component />;
 }
@@ -38,9 +44,19 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={() => <ProtectedRoute component={Feed} />} />
-      <Route path="/posts/:id" component={() => <ProtectedRoute component={PostDetail} />} />
-      <Route path="/profile" component={() => <ProtectedRoute component={Profile} />} />
+      <Route path="/">
+        <ProtectedRoute component={Feed} />
+      </Route>
+      <Route path="/posts/:id">
+        <ProtectedRoute component={PostDetail} />
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute component={Profile} />
+      </Route>
+      <Route path="/stories">
+        <ProtectedRoute component={Stories} />
+      </Route>
+      <Route path="/blocked-role" component={BlockedRole} />
       <Route component={NotFound} />
     </Switch>
   );

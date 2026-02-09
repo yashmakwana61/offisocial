@@ -19,7 +19,7 @@ export default function Landing() {
             </div>
             <span className="font-display font-bold text-xl tracking-tight text-foreground">SafeSpace</span>
           </div>
-          <Button variant="outline" className="rounded-xl border-2 hover:bg-primary/5" onClick={() => window.location.href = "/api/login"}>
+          <Button variant="outline" className="rounded-xl border-2 hover:bg-primary/5" onClick={() => window.location.href = "/api/auth/linkedin"}>
             Member Login
           </Button>
         </div>
@@ -34,12 +34,12 @@ export default function Landing() {
             transition={{ duration: 0.6 }}
           >
             <h1 className="text-5xl sm:text-7xl font-display font-bold text-foreground leading-[1.1]">
-              A silent, safe place for <br/>
+              A silent, safe place for <br />
               <span className="text-primary">honest work talk.</span>
             </h1>
           </motion.div>
-          
-          <motion.p 
+
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
@@ -54,15 +54,15 @@ export default function Landing() {
             transition={{ duration: 0.6, delay: 0.4 }}
             className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8"
           >
-            <Button 
-              size="lg" 
-              className="w-full sm:w-auto px-8 h-14 text-lg rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300"
-              onClick={() => window.location.href = "/api/login"}
+            <Button
+              size="lg"
+              className="w-full sm:w-auto px-8 h-14 text-lg rounded-2xl shadow-xl shadow-primary/20 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 bg-[#0077B5] hover:bg-[#006396] text-white"
+              onClick={() => window.location.href = "/api/auth/linkedin"}
             >
-              Verify with Work Email
+              Verify with LinkedIn
             </Button>
-            <p className="text-sm text-muted-foreground mt-4 sm:mt-0">
-              Only verified employees can join. <br className="hidden sm:block"/> Your identity is never revealed.
+            <p className="text-sm text-muted-foreground mt-4 sm:mt-0 text-center sm:text-left">
+              Only verified employees can join. <br className="hidden sm:block" /> Your identity remains 100% anonymous.
             </p>
           </motion.div>
         </div>
@@ -102,16 +102,16 @@ export default function Landing() {
             </motion.div>
           ))}
         </div>
-        
+
         {/* Unsplash image - Abstract calm office/architecture */}
         <div className="max-w-5xl mx-auto mt-32 rounded-3xl overflow-hidden shadow-2xl relative aspect-video">
-           {/* modern office architecture calm abstract */}
-           <div className="absolute inset-0 bg-primary/10 mix-blend-multiply z-10" />
-           <img 
-             src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=2000&q=80"
-             alt="Calm office environment"
-             className="w-full h-full object-cover"
-           />
+          {/* modern office architecture calm abstract */}
+          <div className="absolute inset-0 bg-primary/10 mix-blend-multiply z-10" />
+          <img
+            src="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=2000&q=80"
+            alt="Calm office environment"
+            className="w-full h-full object-cover"
+          />
         </div>
       </main>
 

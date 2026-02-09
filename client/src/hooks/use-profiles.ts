@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Profile } from "@shared/routes";
+import { api } from "@shared/routes";
+import { type Profile } from "@shared/schema";
 
 export function useProfile() {
   return useQuery({
@@ -25,7 +26,7 @@ export function useCreateProfile() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      
+
       if (!res.ok) {
         if (res.status === 400) {
           const error = api.profiles.create.responses[400].parse(await res.json());
@@ -51,7 +52,7 @@ export function useUpdateRole() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      
+
       if (!res.ok) {
         if (res.status === 400) {
           const error = api.profiles.updateRole.responses[400].parse(await res.json());
@@ -67,6 +68,27 @@ export function useUpdateRole() {
   });
 }
 
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: { isExitMode: boolean }) => {
+      const res = await fetch(api.profiles.me.path, {
+        method: 'PATCH',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error("Failed to update exit mode");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.profiles.me.path] });
+    },
+  });
+}
+
+
 export function useDeleteAccount() {
   return useMutation({
     mutationFn: async (data: { confirmation: "DELETE" }) => {
@@ -76,7 +98,7 @@ export function useDeleteAccount() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-      
+
       if (!res.ok) {
         if (res.status === 400) {
           const error = api.profiles.delete.responses[400].parse(await res.json());
@@ -96,11 +118,51 @@ export function useLogoutAll() {
         method: api.profiles.logoutAll.method,
         credentials: "include",
       });
-      
+
       if (!res.ok) {
         throw new Error("Failed to logout all sessions");
       }
       return api.profiles.logoutAll.responses[200].parse(await res.json());
+    },
+  });
+}
+
+export function useVerificationStatus() {
+  return useQuery({
+    queryKey: ["/api/verification/status"],
+    queryFn: async () => {
+      const res = await fetch("/api/verification/status", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch verification status");
+      return res.json() as Promise<{ status: string; step: string; reason?: string }>;
+    },
+    refetchInterval: (query) => {
+      // Poll if verification is in progress
+      const data = query.state.data;
+      return (data?.step === "url_submitted" || data?.step === "extraction_pending") ? 2000 : false;
+    }
+  });
+}
+
+export function useSubmitLinkedInUrl() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (url: string) => {
+      const res = await fetch("/api/verification/submit-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.message || "Failed to submit LinkedIn URL");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/verification/status"] });
+      queryClient.invalidateQueries({ queryKey: [api.profiles.me.path] });
     },
   });
 }
