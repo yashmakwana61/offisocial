@@ -10,6 +10,16 @@ declare module "http" {
 export async function createApp() {
     const app = express();
 
+    // Diagnostic route - no dependencies
+    app.get("/api/health", (_req, res) => {
+        res.json({
+            status: "ok",
+            env: process.env.NODE_ENV,
+            hasDbUrl: !!process.env.DATABASE_URL,
+            time: new Date().toISOString()
+        });
+    });
+
     app.use(
         express.json({
             verify: (req, _res, buf) => {

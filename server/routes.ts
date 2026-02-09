@@ -15,9 +15,6 @@ export async function registerRoutes(
   // Setup Auth
   await setupAuth(app);
 
-  // Health check
-  app.get("/api/health", (_req, res) => res.json({ status: "ok", message: "Backend is running" }));
-
   // LinkedIn Auth Routes
   app.get("/api/auth/linkedin", passport.authenticate("linkedin", { state: 'SOME_STATE_VAL' }));
   app.get("/api/auth/linkedin/callback",
