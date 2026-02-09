@@ -1,13 +1,10 @@
-import type { IncomingMessage, ServerResponse } from "http";
+import { createApp } from "../server/app.js";
 
 let app: any;
 
 export default async function handler(req: IncomingMessage, res: ServerResponse) {
     try {
         if (!app) {
-            console.log("Vercel Startup: Importing createApp...");
-            // Using dynamic import to catch errors during module loading
-            const { createApp } = await import("../server/app");
             console.log("Vercel Startup: Creating Express app...");
             app = await createApp();
         }
