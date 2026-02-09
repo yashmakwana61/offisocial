@@ -4,11 +4,15 @@ import * as schema from "@shared/schema";
 
 const { Pool } = pg;
 
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
+// We initialize these lazily or allow them to be undefined if DB_URL is missing
+// to prevent top-level crashes in environments like Vercel (during build or if env is missing)
+export const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL })
+  : null;
+
+if (!pool && process.env.NODE_ENV === "production") {
+  console.warn("WARNING: DATABASE_URL is not set. Database operations will fail.");
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
+export const db = pool ? drizzle(pool, { schema }) : null as any;
+
