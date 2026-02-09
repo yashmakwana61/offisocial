@@ -1,8 +1,8 @@
-import { setupAuth, isAuthenticated } from "./auth";
+import { setupAuth, isAuthenticated } from "./auth.js";
 import passport from "passport";
-import { VerificationService } from "./services/verification";
-import { api } from "@shared/routes";
-import { storage } from "./storage";
+import { VerificationService } from "./services/verification.js";
+import { api } from "../shared/routes.js";
+import { storage } from "./storage.js";
 import { z } from "zod";
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";

@@ -3,8 +3,8 @@ import { Strategy as LinkedInStrategy } from "passport-linkedin-oauth2";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
-import { storage } from "./storage";
-import { VerificationService } from "./services/verification";
+import { storage } from "./storage.js";
+import { VerificationService } from "./services/verification.js";
 
 export function getSession() {
     const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
