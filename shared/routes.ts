@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertPostSchema, insertCommentSchema, insertReportSchema, insertWeeklyCheckinSchema, insertLinkedinExchangeSchema, posts, comments, companies, profiles, weeklyCheckins, linkedinExchanges, reports } from './schema';
+import { insertPostSchema, insertCommentSchema, insertReportSchema, insertWeeklyCheckinSchema, insertLinkedinExchangeSchema, posts, comments, companies, profiles, weeklyCheckins, linkedinExchanges, reports } from './schema.js';
 
 // ============================================
 // SHARED ERROR SCHEMAS
