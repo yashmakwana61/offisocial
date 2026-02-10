@@ -1,4 +1,4 @@
-import { createApp } from "../server/app.js";
+import { createApp } from "../server/app";
 import type { IncomingMessage, ServerResponse } from "http";
 
 let app: any;
@@ -7,7 +7,13 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     try {
         if (!app) {
             console.log("Vercel Startup: Creating Express app...");
-            app = await createApp();
+            try {
+                app = await createApp();
+                console.log("Vercel Startup: Express app created successfully.");
+            } catch (createError: any) {
+                console.error("Vercel Startup: createApp FAILED:", createError);
+                throw createError;
+            }
         }
 
         // Express app(req, res) handles the request
@@ -21,6 +27,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
             error: "Vercel Boot Error",
             message: err?.message || String(err),
             stack: err?.stack || "No stack trace",
+            phase: app ? "request_handling" : "bootstrapping",
             env: {
                 node_env: process.env.NODE_ENV,
                 has_db: !!process.env.DATABASE_URL,
