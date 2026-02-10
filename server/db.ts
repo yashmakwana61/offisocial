@@ -6,8 +6,9 @@ const { Pool } = pg;
 
 // We initialize these lazily or allow them to be undefined if DB_URL is missing
 // to prevent top-level crashes in environments like Vercel (during build or if env is missing)
-export const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL })
+const databaseUrl = process.env.DATABASE_URL?.trim();
+export const pool = databaseUrl
+  ? new Pool({ connectionString: databaseUrl })
   : null;
 
 if (!pool && process.env.NODE_ENV === "production") {

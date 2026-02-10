@@ -11,9 +11,24 @@ export async function createApp() {
     const app = express();
 
     // Diagnostic route - no dependencies
-    app.get("/api/health", (_req, res) => {
+    // Diagnostic route - no dependencies
+    app.get("/api/health", async (_req, res) => {
+        let dbStatus = "not_connected";
+        try {
+            if (process.env.DATABASE_URL) {
+                const { db } = await import("./db.js");
+                const { sql } = await import("drizzle-orm");
+                await db.execute(sql`SELECT 1`);
+                dbStatus = "ok";
+            }
+        } catch (err: any) {
+            console.error("[HEALTH CHECK] DB Error:", err.message);
+            dbStatus = `error: ${err.message}`;
+        }
+
         res.json({
             status: "ok",
+            db: dbStatus,
             env: process.env.NODE_ENV,
             hasDbUrl: !!process.env.DATABASE_URL,
             time: new Date().toISOString()
