@@ -1,5 +1,6 @@
 import passport from "passport";
 import { Strategy as LinkedInStrategy } from "passport-linkedin-oauth2";
+import axios from "axios";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
@@ -96,21 +97,22 @@ export async function setupAuth(app: Express) {
         // Override for OIDC compatibility
         // @ts-ignore
         LinkedInStrategy.prototype.userProfile = function (accessToken: string, done: (err?: Error | null, profile?: any) => void) {
-            fetch('https://api.linkedin.com/v2/userinfo', {
+            console.log("[AUTH DEBUG] Fetching LinkedIn user profile...");
+
+            axios.get('https://api.linkedin.com/v2/userinfo', {
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                     'Accept': 'application/json'
                 }
             })
-                .then(res => {
-                    if (!res.ok) {
-                        return res.text().then(text => {
-                            done(new Error(`failed to fetch user profile: ${res.status} ${text}`));
-                        });
-                    }
-                    return res.json();
-                })
-                .then(json => {
+                .then((res: any) => {
+                    const json = res.data;
+                    console.log("[AUTH DEBUG] LinkedIn user profile received:", {
+                        sub: json.sub,
+                        email: json.email,
+                        name: json.name
+                    });
+
                     var profile = {
                         provider: 'linkedin',
                         id: json.sub,
@@ -126,7 +128,8 @@ export async function setupAuth(app: Express) {
                     };
                     done(null, profile);
                 })
-                .catch(err => {
+                .catch((err: any) => {
+                    console.error("[AUTH DEBUG] LinkedIn profile fetch error:", err?.response?.data || err?.message || err);
                     done(err);
                 });
         };
@@ -142,6 +145,8 @@ export async function setupAuth(app: Express) {
                 async (accessToken, refreshToken, profile, done) => {
                     try {
                         const linkedinId = profile.id;
+                        console.log(`[AUTH DEBUG] Strategy verify callback for ID: ${linkedinId}`);
+
                         const pepper = process.env.LINKEDIN_PEPPER || "antigravity_default_pepper";
                         const hashedId = VerificationService.hashId(linkedinId, pepper);
 

@@ -16,13 +16,22 @@ export async function registerRoutes(
   await setupAuth(app);
 
   // LinkedIn Auth Routes
-  app.get("/api/auth/linkedin", passport.authenticate("linkedin", { state: 'SOME_STATE_VAL' }));
-  app.get("/api/auth/linkedin/callback",
-    passport.authenticate("linkedin", { failureRedirect: "/login" }),
-    (req: Request, res: Response) => {
-      res.redirect("/"); // Redirect to feed (or onboarding via ProtectedRoute if needed)
-    }
-  );
+  app.get("/api/auth/linkedin", (req, res, next) => {
+    console.log("[AUTH DEBUG] Initiating LinkedIn OAuth redirect...");
+    passport.authenticate("linkedin", { state: 'SOME_STATE_VAL' })(req, res, next);
+  });
+
+  app.get("/api/auth/linkedin/callback", (req, res, next) => {
+    console.log("[AUTH DEBUG] LinkedIn callback received. Parameters:", req.query);
+    passport.authenticate("linkedin", { failureRedirect: "/login" })(req, res, (err) => {
+      if (err) {
+        console.error("[AUTH DEBUG] Callback authentication error:", err);
+        return next(err);
+      }
+      console.log("[AUTH DEBUG] Callback authentication successful. Redirecting to feed.");
+      res.redirect("/");
+    });
+  });
 
   // === PROFILES ===
   app.get(api.profiles.me.path, isAuthenticated, async (req: any, res: Response) => {
