@@ -5,7 +5,7 @@ import { z } from "zod";
 
 // Import Auth Models
 import { users } from "./models/auth.js";
-export * from "./models/auth";
+export * from "./models/auth.js";
 
 // === COMPANIES ===
 export const companies = pgTable("companies", {
