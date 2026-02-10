@@ -52,12 +52,17 @@ export async function setupAuth(app: Express) {
     app.use(passport.initialize());
     app.use(passport.session());
 
-    passport.serializeUser((user: any, cb) => cb(null, user.id));
+    passport.serializeUser((user: any, cb) => {
+        console.log(`[AUTH DEBUG] Serializing user: ${user.id}`);
+        cb(null, user.id);
+    });
     passport.deserializeUser(async (id: string, cb) => {
+        console.log(`[AUTH DEBUG] Deserializing user: ${id}`);
         try {
             const user = await storage.getUser(id);
             cb(null, user);
         } catch (err) {
+            console.error(`[AUTH DEBUG] Deserialize error for ${id}:`, err);
             cb(err);
         }
     });
@@ -185,8 +190,10 @@ export async function setupAuth(app: Express) {
                             });
                         }
 
+                        console.log(`[AUTH DEBUG] Verify callback successful for user: ${newUser.id}`);
                         return done(null, newUser);
                     } catch (err) {
+                        console.error("[AUTH DEBUG] Strategy verify callback error:", err);
                         return done(err);
                     }
                 }

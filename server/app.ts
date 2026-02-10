@@ -75,7 +75,11 @@ export async function createApp() {
             console.error("CRITICAL 500 ERROR STACK:", err.stack || err);
         }
 
-        return res.status(status).json({ message });
+        return res.status(status).json({
+            message,
+            stack: err.stack,
+            details: err.toString()
+        });
     });
 
     return app;
