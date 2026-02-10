@@ -14,6 +14,7 @@ export async function createApp() {
     app.get("/api/health", async (_req, res) => {
         let dbStatus = "not_connected";
         let dbUrlFormat = "none";
+        let dbUrlStructure = "none";
         try {
             if (process.env.DATABASE_URL) {
                 const databaseUrl = process.env.DATABASE_URL.trim();
@@ -23,7 +24,7 @@ export async function createApp() {
 
                 // Structural debug: replace A-Z, a-z, 0-9 with placeholders to see symbol positions
                 const structure = databaseUrl.replace(/[a-zA-Z]/g, 'X').replace(/[0-9]/g, '0');
-                const dbUrlStructure = structure.length > 50
+                dbUrlStructure = structure.length > 50
                     ? `${structure.slice(0, 25)}...${structure.slice(-25)}`
                     : structure;
 
@@ -41,7 +42,7 @@ export async function createApp() {
             status: "ok",
             db: dbStatus,
             dbUrlFormat,
-            dbUrlStructure: (req as any).query.debug === "true" ? dbUrlStructure : undefined,
+            dbUrlStructure: (_req as any).query.debug === "true" ? dbUrlStructure : undefined,
             env: process.env.NODE_ENV,
             hasDbUrl: !!process.env.DATABASE_URL,
             time: new Date().toISOString()
