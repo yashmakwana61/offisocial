@@ -7,6 +7,17 @@ const { Pool } = pg;
 // We initialize these lazily or allow them to be undefined if DB_URL is missing
 // to prevent top-level crashes in environments like Vercel (during build or if env is missing)
 const databaseUrl = process.env.DATABASE_URL?.trim();
+
+if (databaseUrl) {
+  const obscuredUrl = databaseUrl.length > 20
+    ? `${databaseUrl.slice(0, 10)}...${databaseUrl.slice(-5)}`
+    : "too short";
+  console.log(`[DB DEBUG] Initializing pool with URL length: ${databaseUrl.length}, format: ${obscuredUrl}`);
+  if (!databaseUrl.startsWith("postgres://") && !databaseUrl.startsWith("postgresql://")) {
+    console.warn("[DB DEBUG] WARNING: DATABASE_URL does not start with postgres:// or postgresql://");
+  }
+}
+
 export const pool = databaseUrl
   ? new Pool({ connectionString: databaseUrl })
   : null;
