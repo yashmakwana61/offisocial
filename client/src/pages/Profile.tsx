@@ -1,4 +1,4 @@
-import { useProfile, useUpdateRole, useDeleteAccount, useUpdateProfile } from "@/hooks/use-profiles";
+import { useProfile, useUpdateRole, useDeleteAccount, useUpdateProfile, useUpdateLinkedInUrl, useExchangeRequests, useRespondToExchange } from "@/hooks/use-profiles";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -6,9 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, LogOut, Shield, UserCircle, EyeOff, Lock, Trash2, Loader2 } from "lucide-react";
+import { ArrowLeft, LogOut, Shield, UserCircle, EyeOff, Lock, Trash2, Loader2, Link2, Linkedin } from "lucide-react";
 import { useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Profile() {
@@ -16,20 +16,60 @@ export default function Profile() {
   const { data: profile } = useProfile();
   const updateRole = useUpdateRole();
   const updateProfile = useUpdateProfile();
+  const updateLinkedInUrl = useUpdateLinkedInUrl();
   const deleteAccount = useDeleteAccount();
+  const { data: exchangeRequests } = useExchangeRequests();
+  const respondToExchange = useRespondToExchange();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+
+  const handleRespondToExchange = (id: number, status: 'accepted' | 'rejected') => {
+    respondToExchange.mutate({ id, status }, {
+      onSuccess: () => {
+        toast({ title: `Request ${status}` });
+      },
+      onError: (err) => {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      }
+    });
+  };
 
   const [exitMode, setExitMode] = useState(profile?.isExitMode || false);
   const [linkedinVisible, setLinkedinVisible] = useState(profile?.isLinkedInVisible || false);
   const [isEditingRole, setIsEditingRole] = useState(false);
   const [newRole, setNewRole] = useState(profile?.role || "");
+  const [linkedinUrl, setLinkedinUrl] = useState(profile?.linkedinUrlEncrypted || "");
+
+  // Update local state when profile data arrives
+  useEffect(() => {
+    if (profile) {
+      setExitMode(profile.isExitMode || false);
+      setLinkedinVisible(profile.isLinkedInVisible || false);
+      setNewRole(profile.role || "");
+      setLinkedinUrl(profile.linkedinUrlEncrypted || "");
+    }
+  }, [profile]);
 
   const handleSaveRole = () => {
     updateRole.mutate({ role: newRole }, {
       onSuccess: () => {
         setIsEditingRole(false);
         toast({ title: "Role updated" });
+      },
+      onError: (err) => {
+        toast({ title: "Error", description: err.message, variant: "destructive" });
+      },
+    });
+  };
+
+  const handleSaveLinkedInUrl = () => {
+    if (!linkedinUrl) {
+      toast({ title: "URL required", description: "Please enter a valid LinkedIn URL", variant: "destructive" });
+      return;
+    }
+    updateLinkedInUrl.mutate(linkedinUrl, {
+      onSuccess: () => {
+        toast({ title: "LinkedIn URL updated" });
       },
       onError: (err) => {
         toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -122,16 +162,44 @@ export default function Profile() {
             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Privacy & Exchange</h3>
 
             <Card className="p-4 space-y-4">
-              <div className="flex items-center justify-between gap-4">
-                <div className="space-y-0.5 flex-1">
-                  <Label className="text-base">LinkedIn Exchange</Label>
-                  <p className="text-xs text-muted-foreground">Allow others to request your LinkedIn.</p>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Link2 className="w-4 h-4 text-primary" />
+                    LinkedIn Profile URL
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      value={linkedinUrl}
+                      onChange={(e) => setLinkedinUrl(e.target.value)}
+                      placeholder="https://www.linkedin.com/in/username"
+                      className="h-9 text-xs sm:text-sm bg-background/50"
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleSaveLinkedInUrl}
+                      disabled={updateLinkedInUrl.isPending}
+                      className="h-9"
+                    >
+                      {updateLinkedInUrl.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                    </Button>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground italic">
+                    Required for others to request your LinkedIn profile for exchanges.
+                  </p>
                 </div>
-                <Switch
-                  checked={linkedinVisible}
-                  onCheckedChange={(checked) => handleToggleSetting('isLinkedInVisible', checked)}
-                  disabled={updateProfile.isPending}
-                />
+
+                <div className="flex items-center justify-between gap-4 pt-4 border-t border-border/40">
+                  <div className="space-y-0.5 flex-1">
+                    <Label className="text-base">LinkedIn Exchange</Label>
+                    <p className="text-xs text-muted-foreground">Allow others to request your LinkedIn.</p>
+                  </div>
+                  <Switch
+                    checked={linkedinVisible}
+                    onCheckedChange={(checked) => handleToggleSetting('isLinkedInVisible', checked)}
+                    disabled={updateProfile.isPending}
+                  />
+                </div>
               </div>
             </Card>
           </section>
@@ -159,6 +227,86 @@ export default function Profile() {
             </Card>
           </section>
         </div>
+
+        {/* LinkedIn Requests Section */}
+        <section className="space-y-4">
+          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-2">
+            <Linkedin className="w-4 h-4" />
+            LinkedIn Requests
+          </h3>
+
+          {!exchangeRequests || exchangeRequests.length === 0 ? (
+            <Card className="p-8 text-center border-dashed bg-muted/20">
+              <p className="text-sm text-muted-foreground">No active LinkedIn exchange requests.</p>
+            </Card>
+          ) : (
+            <div className="space-y-3">
+              {exchangeRequests.map((req) => {
+                const isIncoming = req.recipientId === profile?.userId;
+                return (
+                  <Card key={req.id} className="p-4 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                        <UserCircle className="w-5 h-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium">
+                          {isIncoming ? `Request from ${req.otherUserRole}` : `Requested ${req.otherUserRole}`}
+                        </p>
+                        <Badge variant="outline" className={`text-[10px] uppercase mt-1 ${req.status === 'accepted' ? 'text-green-600 border-green-200 bg-green-50' :
+                          req.status === 'rejected' ? 'text-red-600 border-red-200 bg-red-50' :
+                            'text-amber-600 border-amber-200 bg-amber-50'
+                          }`}>
+                          {req.status}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      {isIncoming && req.status === 'pending' && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={() => handleRespondToExchange(req.id, 'accepted')}
+                            disabled={respondToExchange.isPending}
+                          >
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={() => handleRespondToExchange(req.id, 'rejected')}
+                            disabled={respondToExchange.isPending}
+                          >
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                      {req.status === 'accepted' && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 text-xs gap-1.5"
+                          onClick={() => {
+                            // If it's accepted, the backend should provide the link if we fetch details?
+                            // For now, let's assume we show a toast or something if we don't have the URL yet.
+                            toast({ title: "Connecting...", description: "User has shared their LinkedIn profile." });
+                          }}
+                        >
+                          <Linkedin className="w-3.5 h-3.5" />
+                          View Profile
+                        </Button>
+                      )}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
 
         <section className="space-y-4">

@@ -2,24 +2,25 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { UserCircle } from "lucide-react";
+import { UserCircle, Link2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 const roleSchema = z.object({
     role: z.string().min(2, "Role is required"),
+    linkedinUrl: z.string().url("Please enter a valid URL").optional().or(z.literal("")),
 });
 
 interface RoleInputProps {
-    onComplete: (data: { role: string }) => void;
+    onComplete: (data: { role: string; linkedinUrl?: string }) => void;
     isLoading?: boolean;
 }
 
 export default function RoleInput({ onComplete, isLoading }: RoleInputProps) {
     const form = useForm({
         resolver: zodResolver(roleSchema),
-        defaultValues: { role: "" },
+        defaultValues: { role: "", linkedinUrl: "" },
     });
 
     const onSubmit = (data: z.infer<typeof roleSchema>) => {
@@ -55,11 +56,30 @@ export default function RoleInput({ onComplete, isLoading }: RoleInputProps) {
                     {form.formState.errors.role && (
                         <p className="text-xs sm:text-sm text-destructive">{form.formState.errors.role.message}</p>
                     )}
-                    <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 sm:p-3 mt-3 sm:mt-4">
-                        <p className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-400 leading-tight">
-                            <strong>Note:</strong> C-Level Executives and HR professionals are not permitted to join this space to ensure employee psychological safety.
-                        </p>
+                </div>
+
+                <div className="space-y-2">
+                    <Label className="text-sm sm:text-base text-foreground/80">LinkedIn Profile URL (Optional)</Label>
+                    <div className="relative group">
+                        <Link2 className="absolute left-3 top-3 sm:top-3.5 h-4 w-4 sm:h-5 sm:w-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+                        <Input
+                            className="pl-9 sm:pl-10 h-11 sm:h-12 rounded-xl bg-muted/30 border-border/50 focus-visible:ring-primary/20 transition-all font-medium text-sm sm:text-base"
+                            placeholder="https://linkedin.com/in/username"
+                            {...form.register("linkedinUrl")}
+                        />
                     </div>
+                    {form.formState.errors.linkedinUrl && (
+                        <p className="text-xs sm:text-sm text-destructive">{form.formState.errors.linkedinUrl.message}</p>
+                    )}
+                    <p className="text-[10px] sm:text-xs text-muted-foreground italic">
+                        This helps others verify who they are connecting with. Only shared if you accept an exchange.
+                    </p>
+                </div>
+
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5 sm:p-3">
+                    <p className="text-[10px] sm:text-xs text-amber-600 dark:text-amber-400 leading-tight">
+                        <strong>Note:</strong> C-Level Executives and HR professionals are not permitted to join this space to ensure employee psychological safety.
+                    </p>
                 </div>
 
                 <Button

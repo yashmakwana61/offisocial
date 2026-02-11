@@ -34,10 +34,17 @@ export interface IStorage {
   // Companies
   getCompany(id: number): Promise<Company | undefined>;
   getCompanyByName(name: string): Promise<Company | undefined>;
+  findOrCreateCompany(name: string): Promise<Company>;
 
   // Posts
   getCompanyPosts(companyId: number, userId: string, category?: string): Promise<(Post & { commentCount: number; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
+  getPublicPosts(category?: string): Promise<(Omit<Post, 'companyId' | 'authorId'> & { commentCount: number; reactionCounts: { support: number; helpful: number }; authorRole: string | null })[]>;
   getPost(id: number, userId: string): Promise<(Post & { reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null }) | undefined>;
+  getPublicPost(id: number): Promise<(Omit<Post, 'companyId' | 'authorId'> & {
+    comments: (Omit<Comment, 'authorId'> & { authorRole: string | null; reactionCounts: { support: number; helpful: number } })[];
+    reactionCounts: { support: number; helpful: number };
+    authorRole: string | null;
+  }) | undefined>;
   createPost(userId: string, companyId: number, post: CreatePostInput): Promise<Post>;
 
   // Comments
@@ -48,7 +55,7 @@ export interface IStorage {
   toggleReaction(userId: string, targetType: 'post' | 'comment', targetId: number, type: 'support' | 'helpful'): Promise<{ action: 'added' | 'removed' }>;
 
   // Weekly Check-ins
-  createWeeklyCheckin(userId: string, companyId: number, input: CreateWeeklyCheckinInput): Promise<WeeklyCheckin>;
+  createWeeklyCheckin(userId: string, companyId: number, input: CreateWeeklyCheckinInput, weekStartDate: Date): Promise<WeeklyCheckin>;
   getWeeklyCheckin(userId: string, weekStartDate: Date): Promise<WeeklyCheckin | undefined>;
   getAggregatedCheckins(companyId: number, weekStartDate: Date): Promise<{ averageMood: number; totalCheckins: number; categoryCounts: Record<string, number> }>;
 
@@ -56,6 +63,7 @@ export interface IStorage {
   createExchangeRequest(requesterId: string, recipientId: string): Promise<LinkedinExchange>;
   getExchangeRequest(id: number): Promise<LinkedinExchange | undefined>;
   respondToExchange(id: number, status: 'accepted' | 'rejected'): Promise<LinkedinExchange>;
+  getExchangeRequests(userId: string): Promise<(LinkedinExchange & { otherUserRole: string | null; otherUserId: string })[]>;
 
   // Reports
   createReport(userId: string, targetType: 'post' | 'comment', targetId: number, reason: string): Promise<Report>;
@@ -72,7 +80,7 @@ export class DatabaseStorage implements IStorage {
       .insert(users)
       .values(userData)
       .onConflictDoUpdate({
-        target: users.id,
+        target: users.email,
         set: {
           ...userData,
           updatedAt: new Date(),
@@ -160,16 +168,20 @@ export class DatabaseStorage implements IStorage {
     return company;
   }
 
-  async createProfile(userId: string, role: string, companyName: string, hashedLinkedinId?: string, status: Profile["accountStatus"] = "pending"): Promise<Profile> {
-    // Find or create company
-    let company = await this.getCompanyByName(companyName);
+  async findOrCreateCompany(name: string): Promise<Company> {
+    const company = await this.getCompanyByName(name);
     if (!company) {
       const [newCompany] = await db.insert(companies).values({
-        name: companyName,
-        domain: companyName.toLowerCase().replace(/\s+/g, '') + '.com', // Placeholder domain logic
+        name: name,
+        domain: name.toLowerCase().replace(/\s+/g, '') + '.com',
       }).returning();
-      company = newCompany;
+      return newCompany;
     }
+    return company;
+  }
+
+  async createProfile(userId: string, role: string, companyName: string, hashedLinkedinId?: string, status: Profile["accountStatus"] = "pending", linkedinUrl?: string): Promise<Profile> {
+    const company = await this.findOrCreateCompany(companyName);
 
     const [profile] = await db.insert(profiles).values({
       userId,
@@ -178,6 +190,7 @@ export class DatabaseStorage implements IStorage {
       hashedLinkedinId,
       accountStatus: status,
       verificationStep: status === "verified_full" ? "completed" : "oauth_completed",
+      linkedinUrlEncrypted: linkedinUrl,
       joinedAt: new Date(),
     }).returning();
     return profile;
@@ -194,11 +207,12 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async createWeeklyCheckin(userId: string, companyId: number, input: CreateWeeklyCheckinInput): Promise<WeeklyCheckin> {
+  async createWeeklyCheckin(userId: string, companyId: number, input: CreateWeeklyCheckinInput, weekStartDate: Date): Promise<WeeklyCheckin> {
     const [checkin] = await db.insert(weeklyCheckins).values({
       ...input,
       userId,
       companyId,
+      weekStartDate,
     }).returning();
     return checkin;
   }
@@ -221,19 +235,17 @@ export class DatabaseStorage implements IStorage {
       return { averageMood: 0, totalCheckins: 0, categoryCounts: {}, moodCounts: [] };
     }
 
-    const totalMood = checkins.reduce((sum, c) => sum + c.moodScore, 0);
+    const totalMood = checkins.reduce((sum: number, c: WeeklyCheckin) => sum + c.moodScore, 0);
     const categoryCounts: Record<string, number> = {};
     const moodCountsMap: Record<number, number> = {};
 
-    checkins.forEach(c => {
-      // Categories
+    checkins.forEach((c: WeeklyCheckin) => {
       if (c.categories) {
-        c.categories.forEach(cat => {
+        c.categories.forEach((cat: string) => {
           categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;
         });
       }
 
-      // Mood Counts
       moodCountsMap[c.moodScore] = (moodCountsMap[c.moodScore] || 0) + 1;
     });
 
@@ -278,10 +290,31 @@ export class DatabaseStorage implements IStorage {
 
   async respondToExchange(id: number, status: 'accepted' | 'rejected'): Promise<LinkedinExchange> {
     const [updated] = await db.update(linkedinExchanges)
-      .set({ status })
+      .set({ status, updatedAt: new Date() })
       .where(eq(linkedinExchanges.id, id))
       .returning();
     return updated;
+  }
+
+  async getExchangeRequests(userId: string): Promise<any[]> {
+    // Fetch requests where user is either requester or recipient
+    const requests = await db.select().from(linkedinExchanges).where(
+      sql`${linkedinExchanges.requesterId} = ${userId} OR ${linkedinExchanges.recipientId} = ${userId}`
+    ).orderBy(desc(linkedinExchanges.createdAt));
+
+    const enriched = await Promise.all(requests.map(async (req: LinkedinExchange) => {
+      const isRequester = req.requesterId === userId;
+      const otherUserId = isRequester ? req.recipientId : req.requesterId;
+      const [otherProfile] = await db.select().from(profiles).where(eq(profiles.userId, otherUserId));
+
+      return {
+        ...req,
+        otherUserRole: otherProfile?.role || "Verified Employee",
+        otherUserId
+      };
+    }));
+
+    return enriched;
   }
 
   async createReport(userId: string, targetType: 'post' | 'comment', targetId: number, reason: string): Promise<Report> {
@@ -310,7 +343,7 @@ export class DatabaseStorage implements IStorage {
 
     // For each post, get counts and user reaction
     // N+1 query problem here but okay for MVP scale
-    const enrichedPosts = await Promise.all(postsList.map(async (post) => {
+    const enrichedPosts = await Promise.all(postsList.map(async (post: Post) => {
       const [commentCount] = await db
         .select({ count: sql<number>`count(*)` })
         .from(comments)
@@ -323,6 +356,62 @@ export class DatabaseStorage implements IStorage {
         commentCount: Number(commentCount.count),
         reactionCounts: reactionStats.counts,
         userReaction: reactionStats.userReaction
+      };
+    }));
+
+    return enrichedPosts;
+  }
+
+  async getPublicPosts(category?: string): Promise<any[]> {
+    const safeCategories = [
+      "Mental Stress / Burnout",
+      "Toxic Work Culture",
+      "Need Referral / Job Help",
+      "Policy / Work Discussion",
+      "General Experience",
+    ];
+
+    const conditions = [];
+    if (category) {
+      conditions.push(eq(posts.category, category as any));
+    } else {
+      conditions.push(inArray(posts.category, safeCategories as any[]));
+    }
+
+    const postsList = await db.select().from(posts)
+      .where(and(...conditions))
+      .orderBy(desc(posts.createdAt))
+      .limit(50);
+
+    // Fetch all companies once for sanitization
+    const allCompanies = await db.select({ name: companies.name }).from(companies);
+
+    const enrichedPosts = await Promise.all(postsList.map(async (post: Post) => {
+      // Get author role from profile
+      const [profile] = await db.select().from(profiles).where(eq(profiles.userId, post.authorId));
+
+      const [commentCount] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(comments)
+        .where(eq(comments.postId, post.id));
+
+      const reactionStats = await this.getReactionStats('post', post.id, 'GUEST');
+
+      let sanitizedContent = post.content;
+      allCompanies.forEach((c: { name: string }) => {
+        const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        sanitizedContent = sanitizedContent.replace(regex, "[REDACTED]");
+      });
+
+      return {
+        id: post.id,
+        content: sanitizedContent,
+        category: post.category,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+        commentCount: Number(commentCount.count),
+        reactionCounts: reactionStats.counts,
+        authorRole: profile?.role || "Verified Employee"
       };
     }));
 
@@ -351,12 +440,74 @@ export class DatabaseStorage implements IStorage {
     return newPost;
   }
 
+  async getPublicPost(id: number): Promise<any | undefined> {
+    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    if (!post) return undefined;
+
+    const safeCategories = [
+      "Mental Stress / Burnout",
+      "Toxic Work Culture",
+      "Need Referral / Job Help",
+      "Policy / Work Discussion",
+      "General Experience",
+    ];
+    if (!safeCategories.includes(post.category)) return undefined;
+
+    const [profile] = await db.select().from(profiles).where(eq(profiles.userId, post.authorId));
+    const reactionStats = await this.getReactionStats('post', post.id, 'GUEST');
+
+    const allCompanies = await db.select({ name: companies.name }).from(companies);
+
+    // Sanitize
+    let sanitizedContent = post.content;
+    allCompanies.forEach((c: { name: string }) => {
+      const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      sanitizedContent = sanitizedContent.replace(regex, "[REDACTED]");
+    });
+
+    // Get comments
+    const commentsList = await db.select().from(comments)
+      .where(eq(comments.postId, id))
+      .orderBy(desc(comments.createdAt));
+
+    const enrichedComments = await Promise.all(commentsList.map(async (comment: Comment) => {
+      const [commentProfile] = await db.select().from(profiles).where(eq(profiles.userId, comment.authorId));
+      const commentReactionStats = await this.getReactionStats('comment', comment.id, 'GUEST');
+
+      // Sanitize comment
+      let sanitizedCommentContent = comment.content;
+      allCompanies.forEach((c: { name: string }) => {
+        const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        sanitizedCommentContent = sanitizedCommentContent.replace(regex, "[REDACTED]");
+      });
+
+      return {
+        id: comment.id,
+        content: sanitizedCommentContent,
+        createdAt: comment.createdAt,
+        authorRole: commentProfile?.role || "Verified Employee",
+        reactionCounts: commentReactionStats.counts
+      };
+    }));
+
+    return {
+      id: post.id,
+      content: sanitizedContent,
+      category: post.category,
+      createdAt: post.createdAt,
+      updatedAt: post.updatedAt,
+      authorRole: profile?.role || "Verified Employee",
+      reactionCounts: reactionStats.counts,
+      comments: enrichedComments
+    };
+  }
+
   async getPostComments(postId: number, userId: string): Promise<any[]> {
     const commentsList = await db.select().from(comments)
       .where(eq(comments.postId, postId))
       .orderBy(desc(comments.createdAt));
 
-    const enrichedComments = await Promise.all(commentsList.map(async (comment) => {
+    const enrichedComments = await Promise.all(commentsList.map(async (comment: Comment) => {
       const reactionStats = await this.getReactionStats('comment', comment.id, userId);
       return {
         ...comment,
@@ -413,11 +564,11 @@ export class DatabaseStorage implements IStorage {
     ));
 
     const counts = {
-      support: allReactions.filter(r => r.type === 'support').length,
-      helpful: allReactions.filter(r => r.type === 'helpful').length
+      support: allReactions.filter((r: Reaction) => r.type === 'support').length,
+      helpful: allReactions.filter((r: Reaction) => r.type === 'helpful').length
     };
 
-    const userReaction = allReactions.find(r => r.userId === userId)?.type as 'support' | 'helpful' | null || null;
+    const userReaction = allReactions.find((r: Reaction) => r.userId === userId)?.type as 'support' | 'helpful' | null || null;
 
     return { counts, userReaction };
   }

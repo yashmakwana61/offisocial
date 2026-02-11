@@ -1,6 +1,5 @@
 import { setupAuth, isAuthenticated } from "./auth.js";
 import passport from "passport";
-import { VerificationService } from "./services/verification.js";
 import { api } from "../shared/routes.js";
 import { storage } from "./storage.js";
 import { z } from "zod";
@@ -11,7 +10,6 @@ export async function registerRoutes(
   app: Express,
   httpServer?: Server,
 ): Promise<Server | undefined> {
-  // Setup Auth first
   // Setup Auth
   await setupAuth(app);
 
@@ -23,7 +21,7 @@ export async function registerRoutes(
 
   app.get("/api/auth/linkedin/callback", (req, res, next) => {
     console.log("[AUTH DEBUG] LinkedIn callback received. Parameters:", req.query);
-    passport.authenticate("linkedin", { failureRedirect: "/login" })(req, res, (err) => {
+    passport.authenticate("linkedin", { failureRedirect: "/" })(req, res, (err: any) => {
       if (err) {
         console.error("[AUTH DEBUG] Callback authentication error:", err);
         return next(err);
@@ -48,10 +46,20 @@ export async function registerRoutes(
       // Check if profile exists
       const existing = await storage.getProfile(userId);
       if (existing) {
-        return res.status(400).json({ message: "Profile already exists" });
+        const company = await storage.findOrCreateCompany(input.companyName);
+
+        // Allow updating/completing the profile
+        const updated = await storage.updateProfileVerification(userId, {
+          role: input.role,
+          companyId: company.id,
+          linkedinUrlEncrypted: input.linkedinUrl,
+          accountStatus: "verified_full",
+          verificationStep: "completed"
+        });
+        return res.status(200).json(updated);
       }
 
-      const profile = await storage.createProfile(userId, input.role, input.companyName);
+      const profile = await storage.createProfile(userId, input.role, input.companyName, undefined, "verified_full", input.linkedinUrl);
       res.status(201).json(profile);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -74,6 +82,49 @@ export async function registerRoutes(
       } else {
         res.status(500).json({ message: "Internal server error" });
       }
+    }
+  });
+
+  app.patch(api.profiles.updateLinkedInUrl.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    try {
+      const input = api.profiles.updateLinkedInUrl.input.parse(req.body);
+      const updated = await storage.updateProfileVerification(userId, {
+        linkedinUrlEncrypted: input.linkedinUrl
+      });
+      res.json(updated);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Update LinkedIn URL error:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.patch(api.profiles.me.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    try {
+      // Allow partial updates for profile settings (isExitMode, isLinkedInVisible)
+      const allowedFields = ['isExitMode', 'isLinkedInVisible', 'role'];
+      const updates: any = {};
+
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updates[field] = req.body[field];
+        }
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No valid fields provided for update" });
+      }
+
+      const updated = await storage.updateProfileVerification(userId, updates);
+      res.json(updated);
+    } catch (err) {
+      console.error("Update profile error:", err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -109,6 +160,21 @@ export async function registerRoutes(
   });
 
   // === POSTS ===
+  app.get("/api/posts/public", async (req: Request, res: Response) => {
+    const category = req.query.category as string | undefined;
+    const posts = await storage.getPublicPosts(category);
+    res.json(posts);
+  });
+
+  app.get("/api/posts/public/:id", async (req: Request, res: Response) => {
+    const postId = Number(req.params.id);
+    const post = await storage.getPublicPost(postId);
+    if (!post) {
+      return res.status(404).json({ message: "Post not found or restricted" });
+    }
+    res.json(post);
+  });
+
   app.get(api.posts.list.path, isAuthenticated, async (req: any, res: Response) => {
     const userId = req.user.id;
     const profile = await storage.getProfile(userId);
@@ -207,10 +273,9 @@ export async function registerRoutes(
       const input = api.weeklyCheckins.create.input.parse(req.body);
 
       // Check for existing checkin this week
-      // Logic: Get current week start (Monday)
       const now = new Date();
       const day = now.getDay();
-      const diff = now.getDate() - day + (day == 0 ? -6 : 1); // adjust when day is sunday
+      const diff = now.getDate() - day + (day == 0 ? -6 : 1);
       const monday = new Date(now.setDate(diff));
       monday.setHours(0, 0, 0, 0);
 
@@ -219,10 +284,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "You have already checked in this week." });
       }
 
-      const checkin = await storage.createWeeklyCheckin(userId, profile.companyId, {
-        ...input,
-        weekStartDate: monday
-      });
+      const checkin = await storage.createWeeklyCheckin(userId, profile.companyId, input, monday);
       res.status(201).json(checkin);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -235,7 +297,6 @@ export async function registerRoutes(
 
   app.get(api.weeklyCheckins.getMine.path, isAuthenticated, async (req: any, res: Response) => {
     const userId = req.user.id;
-    // Logic: Get current week start
     const now = new Date();
     const day = now.getDay();
     const diff = now.getDate() - day + (day == 0 ? -6 : 1);
@@ -309,6 +370,17 @@ export async function registerRoutes(
     }
   });
 
+  app.get(api.exchange.list.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    try {
+      const requests = await storage.getExchangeRequests(userId);
+      res.json(requests);
+    } catch (err) {
+      console.error("List exchange requests error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // === REPORTS ===
   app.post(api.reports.create.path, isAuthenticated, async (req: any, res: Response) => {
     const userId = req.user.id;
@@ -328,66 +400,6 @@ export async function registerRoutes(
         res.status(500).json({ message: "Internal server error" });
       }
     }
-  });
-
-  // === VERIFICATION FLOW ===
-  app.post("/api/verification/submit-url", isAuthenticated, async (req: any, res: Response) => {
-    const userId = req.user.id;
-    const { url } = req.body;
-
-    if (!VerificationService.validateUrl(url)) {
-      return res.status(400).json({ message: "Invalid LinkedIn URL" });
-    }
-
-    try {
-      await storage.updateProfileVerification(userId, {
-        linkedinUrlEncrypted: url,
-        verificationStep: "url_submitted",
-        accountStatus: "pending"
-      });
-
-      res.json({ message: "URL submitted", step: "url_submitted" });
-
-      (async () => {
-        const data = await VerificationService.extractProfileData(url);
-        if (data) {
-          const classification = VerificationService.classifyRole(data.role);
-          if (classification.isBlocked) {
-            await storage.updateProfileVerification(userId, {
-              extractedRole: data.role,
-              extractedCompany: data.company,
-              accountStatus: "restricted",
-              verificationStep: "completed",
-              statusReason: `Account restricted: ${classification.matchedKeyword} roles are not allowed.`
-            });
-          } else {
-            await storage.updateProfileVerification(userId, {
-              extractedRole: data.role,
-              extractedCompany: data.company,
-              role: data.role,
-              accountStatus: "verified_full",
-              verificationStep: "completed"
-            });
-          }
-        } else {
-          await storage.updateProfileVerification(userId, {
-            verificationStep: "extraction_pending"
-          });
-        }
-      })();
-    } catch (err) {
-      res.status(500).json({ message: "Internal server error" });
-    }
-  });
-
-  app.get("/api/verification/status", isAuthenticated, async (req: any, res: Response) => {
-    const userId = req.user.id;
-    const profile = await storage.getProfile(userId);
-    res.json({
-      status: profile?.accountStatus,
-      step: profile?.verificationStep,
-      reason: profile?.statusReason
-    });
   });
 
   return httpServer;

@@ -13,13 +13,17 @@ export default function Reactions({ post }: ReactionsProps) {
     const toggleReaction = useToggleReaction();
 
     const reactions = (post.reactions as any[]) || [];
-    const supportCount = reactions.filter(r => r.type === 'support').length;
-    const helpfulCount = reactions.filter(r => r.type === 'helpful').length;
+    const supportCount = post.reactionCounts?.support ?? reactions.filter(r => r.type === 'support').length;
+    const helpfulCount = post.reactionCounts?.helpful ?? reactions.filter(r => r.type === 'helpful').length;
 
-    const hasSupported = reactions.some(r => r.userId === user?.id && r.type === 'support');
-    const hasFoundHelpful = reactions.some(r => r.userId === user?.id && r.type === 'helpful');
+    const hasSupported = user ? reactions.some(r => r.userId === user?.id && r.type === 'support') : false;
+    const hasFoundHelpful = user ? reactions.some(r => r.userId === user?.id && r.type === 'helpful') : false;
 
     const handleToggle = (type: 'support' | 'helpful') => {
+        if (!user) {
+            window.location.href = "/api/auth/linkedin";
+            return;
+        }
         toggleReaction.mutate({
             targetType: 'post',
             targetId: post.id,

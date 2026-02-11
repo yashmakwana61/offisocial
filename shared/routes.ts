@@ -39,6 +39,7 @@ export const api = {
       input: z.object({
         role: z.string().min(2).max(50),
         companyName: z.string().min(2),
+        linkedinUrl: z.string().url().optional().or(z.literal("")),
       }),
       responses: {
         201: z.custom<typeof profiles.$inferSelect>(),
@@ -50,6 +51,17 @@ export const api = {
       path: '/api/profiles/role',
       input: z.object({
         role: z.string().min(2).max(50),
+      }),
+      responses: {
+        200: z.custom<typeof profiles.$inferSelect>(),
+        400: errorSchemas.validation,
+      },
+    },
+    updateLinkedInUrl: {
+      method: 'PATCH' as const,
+      path: '/api/profiles/linkedin-url',
+      input: z.object({
+        linkedinUrl: z.string().url(),
       }),
       responses: {
         200: z.custom<typeof profiles.$inferSelect>(),
@@ -89,6 +101,32 @@ export const api = {
           userReaction: 'support' | 'helpful' | null;
         }>()),
         401: errorSchemas.unauthorized,
+      },
+    },
+    publicList: {
+      method: 'GET' as const,
+      path: '/api/posts/public',
+      input: z.object({
+        category: z.string().optional(),
+      }).optional(),
+      responses: {
+        200: z.array(z.custom<Omit<typeof posts.$inferSelect, 'companyId' | 'authorId'> & {
+          commentCount: number;
+          reactionCounts: { support: number; helpful: number };
+          authorRole: string | null;
+        }>()),
+      },
+    },
+    publicGet: {
+      method: 'GET' as const,
+      path: '/api/posts/public/:id',
+      responses: {
+        200: z.custom<Omit<typeof posts.$inferSelect, 'companyId' | 'authorId'> & {
+          comments: (Omit<typeof comments.$inferSelect, 'authorId'> & { authorRole: string | null; reactionCounts: { support: number; helpful: number } })[];
+          reactionCounts: { support: number; helpful: number };
+          authorRole: string | null;
+        }>(),
+        404: errorSchemas.notFound,
       },
     },
     get: {
@@ -190,6 +228,13 @@ export const api = {
       input: z.object({ status: z.enum(['accepted', 'rejected']) }),
       responses: {
         200: z.custom<typeof linkedinExchanges.$inferSelect>(),
+      }
+    },
+    list: {
+      method: 'GET' as const,
+      path: '/api/exchange/requests',
+      responses: {
+        200: z.array(z.custom<typeof linkedinExchanges.$inferSelect & { otherUserRole: string | null; otherUserId: string }>()),
       }
     }
   },

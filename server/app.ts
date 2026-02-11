@@ -23,10 +23,7 @@ export async function createApp() {
                     : "too_short";
 
                 // Structural debug: replace A-Z, a-z, 0-9 with placeholders to see symbol positions
-                const structure = databaseUrl.replace(/[a-zA-Z]/g, 'X').replace(/[0-9]/g, '0');
-                dbUrlStructure = structure.length > 50
-                    ? `${structure.slice(0, 25)}...${structure.slice(-25)}`
-                    : structure;
+                dbUrlStructure = databaseUrl.replace(/[a-zA-Z]/g, 'X').replace(/[0-9]/g, '0');
 
                 const { db } = await import("./db.js");
                 const { sql } = await import("drizzle-orm");
@@ -42,7 +39,8 @@ export async function createApp() {
             status: "ok",
             db: dbStatus,
             dbUrlFormat,
-            dbUrlStructure: (_req as any).query.debug === "true" ? dbUrlStructure : undefined,
+            dbUrlStructure: (_req as any).query.debug === "true" ? 
+                `[${dbUrlStructure}] (has@: ${process.env.DATABASE_URL?.includes('@')})` : undefined,
             env: process.env.NODE_ENV,
             hasDbUrl: !!process.env.DATABASE_URL,
             time: new Date().toISOString()

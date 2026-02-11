@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "wouter";
-import { usePost, useCreateComment } from "@/hooks/use-posts";
+import { usePost, usePublicPost, useCreateComment } from "@/hooks/use-posts";
+import { useAuth } from "@/hooks/use-auth";
 import PostItem from "@/components/feed/PostItem";
 import CommentList from "@/components/comments/CommentList";
 import { Button } from "@/components/ui/button";
@@ -12,13 +13,24 @@ import { useToast } from "@/hooks/use-toast";
 export default function PostDetail() {
   const { id } = useParams();
   const postId = parseInt(id || "0");
-  const { data: post, isLoading } = usePost(postId);
+  const { user, isLoading: authLoading } = useAuth();
+
+  const { data: memberPost, isLoading: memberLoading } = usePost(!authLoading && user ? postId : 0);
+  const { data: publicPost, isLoading: publicLoading } = usePublicPost(!authLoading && !user ? postId : 0);
+
+  const post = user ? memberPost : publicPost;
+  const isLoading = authLoading || (user ? memberLoading : publicLoading);
+
   const createComment = useCreateComment();
   const { toast } = useToast();
   const [commentText, setCommentText] = useState("");
 
   const handleComment = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      window.location.href = "/api/auth/linkedin";
+      return;
+    }
     if (!commentText.trim()) return;
 
     createComment.mutate(
@@ -48,7 +60,7 @@ export default function PostDetail() {
     );
   }
 
-  if (!post) return <div className="p-8 text-center">Post not found</div>;
+  if (!post) return <div className="p-8 text-center text-muted-foreground">Post not found or restricted.</div>;
 
   return (
     <div className="min-h-screen bg-background pb-24 md:pb-20">
@@ -78,15 +90,17 @@ export default function PostDetail() {
             <Textarea
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Add to the discussion..."
+              placeholder={user ? "Add to the discussion..." : "Sign in to join the discussion..."}
               className="min-h-[100px] sm:min-h-[120px] rounded-xl border resize-none focus:ring-primary/20 bg-background text-sm sm:text-base"
+              readOnly={!user}
+              onClick={() => { if (!user) window.location.href = "/api/auth/linkedin"; }}
             />
             <Button
               type="submit"
               className="self-end px-5 sm:px-6 rounded-xl"
-              disabled={!commentText.trim() || createComment.isPending}
+              disabled={(!user ? false : !commentText.trim()) || createComment.isPending}
             >
-              Reply
+              {user ? "Reply" : "Sign In to Reply"}
             </Button>
           </form>
 

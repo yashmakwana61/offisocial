@@ -56,7 +56,7 @@ export default function WeeklyPrompt({ onSubmit, hasSubmitted: propHasSubmitted 
                             </p>
                         </div>
                     </div>
-                    <Button variant="outline" className="sm:ml-auto w-full sm:w-auto" onClick={() => console.log("View results")}>
+                    <Button variant="outline" className="sm:ml-auto w-full sm:w-auto" onClick={() => onSubmit(selected || 'view')}>
                         View Results
                     </Button>
                 </div>

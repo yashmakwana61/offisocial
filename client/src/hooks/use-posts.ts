@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { type CreatePostInput, type CreateCommentInput } from "@shared/schema";
 
-export function usePosts(category?: string) {
+export function usePosts(category?: string, enabled = true) {
   return useQuery({
     queryKey: [api.posts.list.path, category],
     queryFn: async () => {
@@ -14,6 +14,23 @@ export function usePosts(category?: string) {
       if (!res.ok) throw new Error("Failed to fetch posts");
       return api.posts.list.responses[200].parse(await res.json());
     },
+    enabled,
+  });
+}
+
+export function usePublicPosts(category?: string, enabled = true) {
+  return useQuery({
+    queryKey: [api.posts.publicList.path, category],
+    queryFn: async () => {
+      const url = category
+        ? `${api.posts.publicList.path}?category=${encodeURIComponent(category)}`
+        : api.posts.publicList.path;
+
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch public posts");
+      return api.posts.publicList.responses[200].parse(await res.json());
+    },
+    enabled,
   });
 }
 
@@ -25,6 +42,19 @@ export function usePost(id: number) {
       const res = await fetch(url, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch post");
       return api.posts.get.responses[200].parse(await res.json());
+    },
+    enabled: !!id,
+  });
+}
+
+export function usePublicPost(id: number) {
+  return useQuery({
+    queryKey: [api.posts.publicGet.path, id],
+    queryFn: async () => {
+      const url = buildUrl(api.posts.publicGet.path, { id });
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch public post");
+      return api.posts.publicGet.responses[200].parse(await res.json());
     },
     enabled: !!id,
   });

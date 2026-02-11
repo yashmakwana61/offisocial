@@ -28,3 +28,22 @@ if (!pool && process.env.NODE_ENV === "production") {
 
 export const db = pool ? drizzle(pool, { schema }) : null as any;
 
+// Verification check for profiles table (essential for auth)
+if (pool) {
+  pool.query(`
+    SELECT EXISTS (
+      SELECT FROM information_schema.tables 
+      WHERE table_name = 'profiles'
+    );
+  `).then(res => {
+    if (!res.rows[0].exists) {
+      console.error("\n[DB ERROR] 'profiles' table is missing! Auth will fail.");
+      console.error("Please run: npm run db:push\n");
+    } else {
+      console.log("[DB] 'profiles' table verified.");
+    }
+  }).catch(err => {
+    console.error("[DB] Error checking for tables:", err.message);
+  });
+}
+

@@ -10,6 +10,7 @@ interface Comment {
     content: string;
     createdAt: string;
     isAuthor: boolean;
+    authorId: string;
 }
 
 interface CommentItemProps {
@@ -61,6 +62,7 @@ export default function CommentItem({ comment }: CommentItemProps) {
                 isOpen={isRequestModalOpen}
                 onClose={() => setIsRequestModalOpen(false)}
                 targetUserRole={comment.authorRole || "Employee"}
+                recipientId={comment.authorId}
             />
         </>
     );

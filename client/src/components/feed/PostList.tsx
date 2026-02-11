@@ -1,4 +1,6 @@
-import { usePosts } from "@/hooks/use-posts";
+import { usePosts, usePublicPosts } from "@/hooks/use-posts";
+import { useAuth } from "@/hooks/use-auth";
+import { useProfile } from "@/hooks/use-profiles";
 import PostItem from "./PostItem";
 import { Loader2, MessageSquareDashed } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -8,7 +10,19 @@ interface PostListProps {
 }
 
 export default function PostList({ category }: PostListProps) {
-    const { data: posts, isLoading, isError } = usePosts(category || undefined);
+    const { user, isLoading: authLoading } = useAuth();
+    const { data: profile, isLoading: profileLoading } = useProfile();
+
+    // A "full member" is someone who is authenticated AND has a completed profile
+    const isFullMember = !!user && !!profile && profile.companyId;
+    const isResolving = authLoading || (!!user && profileLoading);
+
+    const { data: memberPosts, isLoading: memberLoading, isError: memberError } = usePosts(category || undefined, !isResolving && !!isFullMember);
+    const { data: publicPosts, isLoading: publicLoading, isError: publicError } = usePublicPosts(category || undefined, !isResolving && !isFullMember);
+
+    const posts = isFullMember ? memberPosts : publicPosts;
+    const isLoading = isResolving || (isFullMember ? memberLoading : publicLoading);
+    const isError = isFullMember ? memberError : publicError;
 
     if (isLoading) {
         return (

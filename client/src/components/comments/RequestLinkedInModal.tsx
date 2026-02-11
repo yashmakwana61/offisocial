@@ -1,37 +1,51 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useState } from "react";
-import { Linkedin } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Linkedin, Loader2 } from "lucide-react";
+import { useCreateExchangeRequest } from "@/hooks/use-profiles";
+import { useToast } from "@/hooks/use-toast";
 
 interface RequestLinkedInModalProps {
     isOpen: boolean;
     onClose: () => void;
     targetUserRole: string;
+    recipientId: string;
 }
 
-export default function RequestLinkedInModal({ isOpen, onClose, targetUserRole }: RequestLinkedInModalProps) {
+export default function RequestLinkedInModal({ isOpen, onClose, targetUserRole, recipientId }: RequestLinkedInModalProps) {
     const [message, setMessage] = useState("");
-    const [isSending, setIsSending] = useState(false);
-    const [isSent, setIsSent] = useState(false);
+    const { toast } = useToast();
+    const createRequest = useCreateExchangeRequest();
 
     const handleSend = () => {
-        setIsSending(true);
-        setTimeout(() => {
-            setIsSending(false);
-            setIsSent(true);
-            setTimeout(() => {
+        createRequest.mutate(recipientId, {
+            onError: (err) => {
+                toast({
+                    title: "Request failed",
+                    description: err.message,
+                    variant: "destructive"
+                });
+            }
+        });
+    };
+
+    // Close on success after delay
+    useEffect(() => {
+        if (createRequest.isSuccess) {
+            const timer = setTimeout(() => {
                 onClose();
-                setIsSent(false);
+                createRequest.reset();
                 setMessage("");
             }, 2000);
-        }, 1000);
-    };
+            return () => clearTimeout(timer);
+        }
+    }, [createRequest.isSuccess, onClose, createRequest]);
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md mx-4 sm:mx-auto rounded-xl sm:rounded-lg">
-                {!isSent ? (
+                {!createRequest.isSuccess ? (
                     <>
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
@@ -56,8 +70,13 @@ export default function RequestLinkedInModal({ isOpen, onClose, targetUserRole }
                         </div>
                         <DialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
                             <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
-                            <Button onClick={handleSend} disabled={isSending} className="w-full sm:w-auto">
-                                {isSending ? "Sending Request..." : "Send Request"}
+                            <Button onClick={handleSend} disabled={createRequest.isPending} className="w-full sm:w-auto">
+                                {createRequest.isPending ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Sending...
+                                    </>
+                                ) : "Send Request"}
                             </Button>
                         </DialogFooter>
                     </>

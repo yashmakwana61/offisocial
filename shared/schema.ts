@@ -164,7 +164,7 @@ export const linkedinExchanges = pgTable("linkedin_exchanges", {
 });
 
 // === NEW ZOD SCHEMAS ===
-export const insertWeeklyCheckinSchema = createInsertSchema(weeklyCheckins).omit({ id: true, createdAt: true });
+export const insertWeeklyCheckinSchema = createInsertSchema(weeklyCheckins).omit({ id: true, createdAt: true, userId: true, companyId: true, weekStartDate: true });
 export const insertLinkedinExchangeSchema = createInsertSchema(linkedinExchanges).omit({ id: true, createdAt: true, updatedAt: true });
 
 // === NEW TYPES ===

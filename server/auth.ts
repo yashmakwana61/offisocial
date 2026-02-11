@@ -5,7 +5,6 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import { storage } from "./storage.js";
-import { VerificationService } from "./services/verification.js";
 
 export function getSession() {
     const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
@@ -68,60 +67,37 @@ export async function setupAuth(app: Express) {
         }
     });
 
-    // Mock Auto-login for local development without LinkedIn credentials
-    if (!process.env.LINKEDIN_CLIENT_ID || process.env.NODE_ENV !== "production") {
-        console.log("[AUTH] Setting up Local Mock Auto-login...");
+    console.log("[AUTH DEBUG] Setting up LinkedIn Strategy with OIDC support...");
 
-        const MOCK_USER_DATA = {
-            id: "local-user-1",
-            firstName: "Local",
-            lastName: "User",
-            email: "local@test.com",
-        };
+    // PROTOTYPE OVERRIDE: Ensure all LinkedInStrategy instances use OIDC userinfo endpoint
+    // This fixes the 403 error caused by the library using deprecated /v2/me
+    const originalUserProfile = (LinkedInStrategy.prototype as any).userProfile;
+    (LinkedInStrategy.prototype as any).userProfile = function (accessToken: string, done: (err?: any, profile?: any) => void) {
+        console.log("[AUTH DEBUG] Overridden userProfile called! Fetching from OIDC userinfo...");
 
-        app.use(async (req, res, next) => {
-            if (!req.path.startsWith("/api") || req.path === "/api/logout") return next();
-
-            if (!req.isAuthenticated()) {
-                console.log(`[AUTH DEBUG] Auto-logging in user to session: ${req.sessionID}`);
-                const user = await storage.upsertUser(MOCK_USER_DATA);
-                req.login(user, (err) => {
-                    if (err) return next(err);
-                    req.session.save((serr) => {
-                        if (serr) console.error("[AUTH DEBUG] Session save failed:", serr);
-                        next();
-                    });
-                });
-            } else {
-                next();
-            }
-        });
-    }
-
-    // LinkedIn Strategy
-    if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET) {
-        // Override for OIDC compatibility
+        // IMPORTANT: LinkedIn requires the access token parameter to be named 'oauth2_access_token'
         // @ts-ignore
-        LinkedInStrategy.prototype.userProfile = function (accessToken: string, done: (err?: Error | null, profile?: any) => void) {
-            console.log("[AUTH DEBUG] Fetching LinkedIn user profile...");
+        this._oauth2.setAccessTokenName("oauth2_access_token");
 
-            axios.get('https://api.linkedin.com/v2/userinfo', {
-                headers: {
-                    'Authorization': `Bearer ${accessToken}`,
-                    'Accept': 'application/json'
+        // @ts-ignore - access internal _oauth2
+        this._oauth2.get(
+            'https://api.linkedin.com/v2/userinfo',
+            accessToken,
+            (err: any, body: any) => {
+                if (err) {
+                    console.error("[AUTH DEBUG] OIDC Profile Fetch Error:", err);
+                    // Use a generic error if InternalOAuthError isn't available on the strategy class
+                    const error = new Error('failed to fetch user profile');
+                    (error as any).details = err;
+                    return done(error);
                 }
-            })
-                .then((res: any) => {
-                    const json = res.data;
-                    console.log("[AUTH DEBUG] LinkedIn user profile received:", {
-                        sub: json.sub,
-                        email: json.email,
-                        name: json.name
-                    });
 
-                    var profile = {
+                try {
+                    const json = JSON.parse(body);
+                    console.log("[AUTH DEBUG] OIDC Profile Response received for:", json.sub);
+                    const profile: any = {
                         provider: 'linkedin',
-                        id: json.sub,
+                        id: json.sub, // OIDC uses 'sub' instead of 'id'
                         displayName: json.name,
                         name: {
                             givenName: json.given_name,
@@ -129,78 +105,61 @@ export async function setupAuth(app: Express) {
                         },
                         emails: [{ value: json.email }],
                         photos: [{ value: json.picture }],
-                        _raw: JSON.stringify(json),
+                        _raw: body,
                         _json: json
                     };
                     done(null, profile);
-                })
-                .catch((err: any) => {
-                    console.error("[AUTH DEBUG] LinkedIn profile fetch error:", err?.response?.data || err?.message || err);
-                    done(err);
-                });
-        };
-
-        passport.use(
-            new LinkedInStrategy(
-                {
-                    clientID: process.env.LINKEDIN_CLIENT_ID,
-                    clientSecret: process.env.LINKEDIN_CLIENT_SECRET,
-                    callbackURL: process.env.LINKEDIN_CALLBACK_URL || "http://localhost:5000/api/auth/linkedin/callback",
-                    scope: ["openid", "profile", "email"],
-                },
-                async (accessToken, refreshToken, profile, done) => {
-                    try {
-                        const linkedinId = profile.id;
-                        console.log(`[AUTH DEBUG] Strategy verify callback for ID: ${linkedinId}`);
-
-                        const pepper = process.env.LINKEDIN_PEPPER || "antigravity_default_pepper";
-                        const hashedId = VerificationService.hashId(linkedinId, pepper);
-
-                        // Check if profile exists with this hashed ID
-                        let existingProfile = await storage.getProfileByHashedId(hashedId);
-
-                        if (existingProfile) {
-                            const user = await storage.getUser(existingProfile.userId);
-                            return done(null, user);
-                        }
-
-                        // Create anonymous user
-                        const userData = {
-                            firstName: "Anonymous",
-                            lastName: "Employee",
-                            email: `anon-${hashedId.slice(0, 8)}@employee.internal`, // Placeholder
-                        };
-
-                        const newUser = await storage.upsertUser(userData);
-                        const userProfile = await storage.getProfile(newUser.id);
-
-                        if (!userProfile) {
-                            // Create profile - setting to verified_full by default as requested
-                            await storage.createProfile(
-                                newUser.id,
-                                "Software Professional",
-                                "LinkedIn Verified",
-                                hashedId,
-                                "verified_full"
-                            );
-                        } else if (userProfile.accountStatus === "pending") {
-                            // Automatically verify returning users who were pending
-                            await storage.updateProfileVerification(newUser.id, {
-                                accountStatus: "verified_full",
-                                verificationStep: "completed"
-                            });
-                        }
-
-                        console.log(`[AUTH DEBUG] Verify callback successful for user: ${newUser.id}`);
-                        return done(null, newUser);
-                    } catch (err) {
-                        console.error("[AUTH DEBUG] Strategy verify callback error:", err);
-                        return done(err);
-                    }
+                } catch (e) {
+                    console.error("[AUTH DEBUG] OIDC Profile Parse Error:", e);
+                    done(e);
                 }
-            )
+            }
         );
-    }
+    };
+
+    const strategy = new LinkedInStrategy(
+        {
+            clientID: process.env.LINKEDIN_CLIENT_ID!,
+            clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
+            callbackURL: process.env.LINKEDIN_CALLBACK_URL || "http://localhost:5000/api/auth/linkedin/callback",
+            scope: ["openid", "profile", "email"],
+        },
+        async (accessToken: string, refreshToken: string, profile: any, done: any) => {
+            try {
+                const linkedinId = profile.id;
+                console.log(`[AUTH DEBUG] Strategy verify callback for LinkedIn ID (sub): ${linkedinId}`);
+
+                // Create anonymous user data
+                const userData = {
+                    firstName: profile.name?.givenName || "Anonymous",
+                    lastName: profile.name?.familyName || "Employee",
+                    email: profile.emails?.[0]?.value || `anon-${linkedinId.slice(0, 8)}@employee.internal`,
+                };
+
+                const newUser = await storage.upsertUser(userData);
+                const userProfile = await storage.getProfile(newUser.id);
+
+                if (!userProfile) {
+                    // Create profile - setting to verified_full by default as requested
+                    await storage.createProfile(
+                        newUser.id,
+                        "Software Professional",
+                        "LinkedIn Verified",
+                        linkedinId,
+                        "verified_full"
+                    );
+                }
+
+                console.log(`[AUTH DEBUG] Verify callback successful for user: ${newUser.id}`);
+                return done(null, newUser);
+            } catch (err) {
+                console.error("[AUTH DEBUG] Strategy verify callback error:", err);
+                return done(err);
+            }
+        }
+    );
+
+    passport.use(strategy);
 
     // Auth Status Routes
     app.get("/api/auth/user", (req, res) => {

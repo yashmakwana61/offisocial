@@ -1,17 +1,16 @@
 import { useState, useEffect } from "react";
-import { useCreateProfile, useVerificationStatus } from "@/hooks/use-profiles";
+import { useCreateProfile } from "@/hooks/use-profiles";
 import { Card } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 
 // Steps
-import LinkedInVerification from "@/components/onboarding/LinkedInVerification";
 import CompanyConfirmation from "@/components/onboarding/CompanyConfirmation";
 import RoleInput from "@/components/onboarding/RoleInput";
 
 // Restricted words logic
-const RESTRICTED_ROLES = ["hr", "human resources", "ceo", "cto", "cfo", "coo", "founder", "executive", "vp of people", "head of people"];
+const RESTRICTED_ROLES: string[] = []; // No blocking for anyone
 
 export default function Onboarding() {
   const [step, setStep] = useState(1);
@@ -20,39 +19,18 @@ export default function Onboarding() {
     role: "",
   });
 
-  const { data: status } = useVerificationStatus();
   const createProfile = useCreateProfile();
   const { toast } = useToast();
   const [, setLocation] = useLocation();
 
   const nextStep = () => setStep((s) => s + 1);
 
-  const handleVerifyComplete = () => {
-    if (status?.status === "verified_full") {
-      toast({
-        title: "Verification Successful",
-        description: "You've been fully verified via LinkedIn.",
-      });
-      setLocation("/");
-    } else {
-      nextStep();
-    }
-  };
-
   const handleCompanySubmit = (data: { companyName: string }) => {
     setFormData((prev) => ({ ...prev, ...data }));
     nextStep();
   };
 
-  const handleRoleSubmit = (data: { role: string }) => {
-    const roleLower = data.role.toLowerCase();
-    const isRestricted = RESTRICTED_ROLES.some(r => roleLower.includes(r));
-
-    if (isRestricted) {
-      setLocation("/blocked-role");
-      return;
-    }
-
+  const handleRoleSubmit = (data: { role: string; linkedinUrl?: string }) => {
     const finalData = { ...formData, ...data };
 
     createProfile.mutate(finalData, {
@@ -90,7 +68,7 @@ export default function Onboarding() {
 
           {/* Progress Indicator */}
           <div className="flex items-center justify-center gap-2 mt-5 sm:mt-6">
-            {[1, 2, 3].map((s) => (
+            {[1, 2].map((s) => (
               <div
                 key={s}
                 className={`h-1.5 rounded-full transition-all duration-300 ${s === step ? "w-6 sm:w-8 bg-primary" : s < step ? "w-6 sm:w-8 bg-primary/40" : "w-2 bg-muted-foreground/20"
@@ -103,13 +81,10 @@ export default function Onboarding() {
         <Card className="p-6 sm:p-8 md:p-10 rounded-2xl sm:rounded-[2rem] shadow-2xl shadow-black/5 border-white/20 dark:border-white/10 backdrop-blur-sm bg-card/80">
           <AnimatePresence mode="wait">
             {step === 1 && (
-              <LinkedInVerification key="step1" onComplete={handleVerifyComplete} />
+              <CompanyConfirmation key="step1" onComplete={handleCompanySubmit} />
             )}
             {step === 2 && (
-              <CompanyConfirmation key="step2" onComplete={handleCompanySubmit} />
-            )}
-            {step === 3 && (
-              <RoleInput key="step3" onComplete={handleRoleSubmit} isLoading={createProfile.isPending} />
+              <RoleInput key="step2" onComplete={handleRoleSubmit} isLoading={createProfile.isPending} />
             )}
           </AnimatePresence>
         </Card>
