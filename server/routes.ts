@@ -216,7 +216,13 @@ export async function registerRoutes(
 
     try {
       const input = api.posts.create.input.parse(req.body);
-      const post = await storage.createPost(userId, profile.companyId, input);
+      // Use the provided companyId if selecting a community via @ mention, otherwise fallback to primary company
+      const companyId = req.body.companyId || profile.companyId;
+
+      const post = await storage.createPost(userId, companyId, {
+        ...input,
+        attachments: req.body.attachments || []
+      });
       res.status(201).json(post);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -233,7 +239,10 @@ export async function registerRoutes(
     try {
       const postId = Number(req.params.id);
       const input = api.comments.create.input.parse(req.body);
-      const comment = await storage.createComment(userId, postId, input);
+      const comment = await storage.createComment(userId, postId, {
+        ...input,
+        parentId: req.body.parentId
+      });
       res.status(201).json(comment);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -400,6 +409,13 @@ export async function registerRoutes(
         res.status(500).json({ message: "Internal server error" });
       }
     }
+  });
+
+  app.get(api.communities.search.path, isAuthenticated, async (req: Request, res: Response) => {
+    const query = req.query.q as string;
+    if (!query) return res.json([]);
+    const companies = await storage.searchCompanies(query);
+    res.json(companies);
   });
 
   return httpServer;

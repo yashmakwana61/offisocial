@@ -63,6 +63,7 @@ export const posts = pgTable("posts", {
   authorId: text("author_id").notNull(), // FK to users.id (kept private in API)
   content: text("content").notNull(),
   category: text("category", { enum: POST_CATEGORIES }).notNull(),
+  attachments: jsonb("attachments").default([]), // Array of { type, url, name }
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -71,6 +72,7 @@ export const posts = pgTable("posts", {
 export const comments = pgTable("comments", {
   id: serial("id").primaryKey(),
   postId: integer("post_id").notNull().references(() => posts.id),
+  parentId: integer("parent_id"), // Self-reference for nested comments
   authorId: text("author_id").notNull(), // FK to users.id
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
@@ -118,6 +120,14 @@ export const commentsRelations = relations(comments, ({ one, many }) => ({
     fields: [comments.postId],
     references: [posts.id],
   }),
+  parent: one(comments, {
+    fields: [comments.parentId],
+    references: [comments.id],
+    relationName: "parent_child",
+  }),
+  replies: many(comments, {
+    relationName: "parent_child",
+  }),
   reactions: many(reactions),
 }));
 
@@ -127,6 +137,7 @@ export const insertProfileSchema = createInsertSchema(profiles).omit({ id: true,
 export const updateRoleSchema = z.object({ role: z.string().min(2).max(50) });
 export const insertPostSchema = createInsertSchema(posts).omit({ id: true, authorId: true, companyId: true, createdAt: true, updatedAt: true });
 export const insertCommentSchema = createInsertSchema(comments).omit({ id: true, authorId: true, postId: true, createdAt: true });
+
 export const insertReportSchema = createInsertSchema(reports).omit({ id: true, reporterId: true, status: true, createdAt: true });
 
 // === TYPES ===

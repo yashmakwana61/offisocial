@@ -45,11 +45,11 @@ export interface IStorage {
     reactionCounts: { support: number; helpful: number };
     authorRole: string | null;
   }) | undefined>;
-  createPost(userId: string, companyId: number, post: CreatePostInput): Promise<Post>;
+  createPost(userId: string, companyId: number, post: CreatePostInput & { attachments?: any[] }): Promise<Post>;
 
   // Comments
   getPostComments(postId: number, userId: string): Promise<(Comment & { reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
-  createComment(userId: string, postId: number, comment: CreateCommentInput): Promise<Comment>;
+  createComment(userId: string, postId: number, comment: CreateCommentInput & { parentId?: number }): Promise<Comment>;
 
   // Reactions
   toggleReaction(userId: string, targetType: 'post' | 'comment', targetId: number, type: 'support' | 'helpful'): Promise<{ action: 'added' | 'removed' }>;
@@ -67,6 +67,7 @@ export interface IStorage {
 
   // Reports
   createReport(userId: string, targetType: 'post' | 'comment', targetId: number, reason: string): Promise<Report>;
+  searchCompanies(query: string): Promise<Company[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -431,14 +432,6 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async createPost(userId: string, companyId: number, post: CreatePostInput): Promise<Post> {
-    const [newPost] = await db.insert(posts).values({
-      ...post,
-      authorId: userId,
-      companyId,
-    }).returning();
-    return newPost;
-  }
 
   async getPublicPost(id: number): Promise<any | undefined> {
     const [post] = await db.select().from(posts).where(eq(posts.id, id));
@@ -519,13 +512,24 @@ export class DatabaseStorage implements IStorage {
     return enrichedComments;
   }
 
-  async createComment(userId: string, postId: number, comment: CreateCommentInput): Promise<Comment> {
+  async createComment(userId: string, postId: number, comment: CreateCommentInput & { parentId?: number }): Promise<Comment> {
     const [newComment] = await db.insert(comments).values({
       ...comment,
       authorId: userId,
       postId,
+      parentId: comment.parentId || null,
     }).returning();
     return newComment;
+  }
+
+  async createPost(userId: string, companyId: number, post: CreatePostInput & { attachments?: any[] }): Promise<Post> {
+    const [newPost] = await db.insert(posts).values({
+      ...post,
+      authorId: userId,
+      companyId,
+      attachments: post.attachments || [],
+    }).returning();
+    return newPost;
   }
 
   async toggleReaction(userId: string, targetType: 'post' | 'comment', targetId: number, type: 'support' | 'helpful'): Promise<{ action: 'added' | 'removed' }> {
@@ -571,6 +575,9 @@ export class DatabaseStorage implements IStorage {
     const userReaction = allReactions.find((r: Reaction) => r.userId === userId)?.type as 'support' | 'helpful' | null || null;
 
     return { counts, userReaction };
+  }
+  async searchCompanies(query: string): Promise<Company[]> {
+    return await db.select().from(companies).where(like(sql`lower(${companies.name})`, `%${query.toLowerCase()}%`)).limit(10);
   }
 }
 

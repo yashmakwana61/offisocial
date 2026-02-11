@@ -165,6 +165,15 @@ export const api = {
       },
     },
   },
+  communities: {
+    search: {
+      method: 'GET' as const,
+      path: '/api/companies/search',
+      responses: {
+        200: z.array(z.custom<typeof companies.$inferSelect>()),
+      },
+    },
+  },
   reactions: {
     toggle: {
       method: 'POST' as const,

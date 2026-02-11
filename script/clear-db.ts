@@ -2,7 +2,13 @@ import { pool } from "../server/db";
 import { sql } from "drizzle-orm";
 
 async function clearDatabase() {
+    if (!pool) {
+        console.error("Database pool is not initialized. Please ensure DATABASE_URL is set.");
+        process.exit(1);
+    }
+
     console.log("Starting database clearing process...");
+
 
     const tables = [
         "reactions",
@@ -39,7 +45,9 @@ async function clearDatabase() {
         console.error("Error clearing database:", error);
         process.exit(1);
     } finally {
-        await pool.end();
+        if (pool) {
+            await pool.end();
+        }
     }
 }
 

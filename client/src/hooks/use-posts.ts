@@ -63,7 +63,7 @@ export function usePublicPost(id: number) {
 export function useCreatePost() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: CreatePostInput) => {
+    mutationFn: async (data: CreatePostInput & { attachments?: any[] }) => {
       const res = await fetch(api.posts.create.path, {
         method: api.posts.create.method,
         headers: { "Content-Type": "application/json" },
@@ -83,10 +83,9 @@ export function useCreatePost() {
 export function useCreateComment() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({ postId, content }: { postId: number; content: string }) => {
+    mutationFn: async ({ postId, content, parentId }: { postId: number; content: string; parentId?: number }) => {
       const url = buildUrl(api.comments.create.path, { id: postId });
-      // Construct CreateCommentInput explicitly (omitting auto-generated fields)
-      const payload: CreateCommentInput = { content };
+      const payload: any = { content, parentId };
 
       const res = await fetch(url, {
         method: api.comments.create.method,

@@ -1,9 +1,9 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
-import { Post } from "@shared/schema";
+import { POST_CATEGORIES } from "@shared/schema";
 import Reactions from "./Reactions";
-import { UserCircle, MoreHorizontal, Flag } from "lucide-react";
+import { UserCircle, MoreHorizontal, Flag, FileText, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
@@ -22,6 +22,21 @@ interface PostItemProps {
 
 export default function PostItem({ post, fullView = false }: PostItemProps) {
     const [isReportOpen, setIsReportOpen] = useState(false);
+
+    const renderContent = (content: string) => {
+        const categoryPattern = POST_CATEGORIES
+            .map(cat => cat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+            .join('|');
+        const regex = new RegExp(`(@(?:${categoryPattern}))`, 'g');
+
+        const parts = content.split(regex);
+        return parts.map((part, i) => {
+            if (part.startsWith('@')) {
+                return <span key={i} className="text-primary font-bold">{part}</span>;
+            }
+            return part;
+        });
+    };
 
     return (
         <>
@@ -63,25 +78,66 @@ export default function PostItem({ post, fullView = false }: PostItemProps) {
                     </div>
                 </div>
 
-                {/* Category badge for mobile - shows below header */}
                 <Badge variant="outline" className="text-[9px] font-normal opacity-70 mb-3 xs:hidden">
                     {post.category}
                 </Badge>
 
                 <div className="sm:pl-[52px]">
-                    {fullView ? (
-                        <p className="text-foreground/90 leading-relaxed text-sm sm:text-[15px] whitespace-pre-wrap mb-4 font-medium">
-                            {post.content}
-                        </p>
-                    ) : (
-                        <Link href={`/posts/${post.id}`}>
-                            <p className="text-foreground/90 leading-relaxed text-sm sm:text-[15px] whitespace-pre-wrap mb-4 cursor-pointer hover:text-foreground">
-                                {post.content}
+                    <div className="mb-4">
+                        {fullView ? (
+                            <p className="text-foreground/90 leading-relaxed text-sm sm:text-[15px] whitespace-pre-wrap font-medium">
+                                {renderContent(post.content)}
                             </p>
-                        </Link>
+                        ) : (
+                            <Link href={`/posts/${post.id}`}>
+                                <p className="text-foreground/90 leading-relaxed text-sm sm:text-[15px] whitespace-pre-wrap cursor-pointer hover:text-foreground">
+                                    {renderContent(post.content)}
+                                </p>
+                            </Link>
+                        )}
+                    </div>
+
+                    {post.attachments && post.attachments.length > 0 && (
+                        <div className="mb-4 flex flex-wrap gap-3">
+                            {post.attachments.map((file: any, i: number) => (
+                                <div key={i} className="max-w-full">
+                                    {file.type === 'image' ? (
+                                        <img
+                                            src={file.url}
+                                            alt={file.name}
+                                            className="max-h-[300px] rounded-xl object-contain border bg-muted/10 cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() => window.open(file.url, '_blank')}
+                                        />
+                                    ) : (
+                                        <a
+                                            href={file.url}
+                                            download={file.name}
+                                            className="flex items-center gap-3 p-3 rounded-xl border bg-muted/30 hover:bg-muted/50 transition-colors"
+                                        >
+                                            <FileText className="w-5 h-5 text-primary" />
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-medium line-clamp-1">{file.name}</span>
+                                                <span className="text-[10px] text-muted-foreground uppercase">Document</span>
+                                            </div>
+                                        </a>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     )}
 
-                    <Reactions post={post} />
+                    <div className="flex items-center justify-between gap-4">
+                        <Reactions post={post} />
+
+                        <Link href={`/posts/${post.id}`}>
+                            <Button variant="ghost" size="sm" className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5">
+                                <MessageCircle className="w-4 h-4" />
+                                <span className="text-xs font-medium">
+                                    {post.commentCount || 0}
+                                </span>
+                            </Button>
+                        </Link>
+                    </div>
                 </div>
             </Card>
 
