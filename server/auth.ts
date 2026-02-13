@@ -175,6 +175,44 @@ export async function setupAuth(app: Express) {
             res.redirect("/");
         });
     });
+
+    // DEV ONLY: Mock Login for testing/verification
+    if (app.get("env") !== "production") {
+        app.post("/api/auth/dev-login", async (req, res, next) => {
+            const email = req.body.email || "dev@local.test";
+            try {
+                const existingUser = await storage.getUserByEmail(email).catch(() => undefined);
+                let user = existingUser;
+
+                if (!user) {
+                    user = await storage.upsertUser({
+                        email,
+                        firstName: "Dev",
+                        lastName: "User",
+                    });
+                }
+
+                // Ensure profile exists
+                const existingProfile = await storage.getProfile(user.id);
+                if (!existingProfile) {
+                    await storage.createProfile(
+                        user.id,
+                        "Software Engineer",
+                        "Tech Corp",
+                        "dev-linkedin-id",
+                        "verified_full"
+                    );
+                }
+
+                req.login(user, (err) => {
+                    if (err) return next(err);
+                    return res.json(user);
+                });
+            } catch (err) {
+                next(err);
+            }
+        });
+    }
 }
 
 export const isAuthenticated: RequestHandler = (req, res, next) => {

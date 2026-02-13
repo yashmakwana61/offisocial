@@ -162,7 +162,9 @@ export async function registerRoutes(
   // === POSTS ===
   app.get("/api/posts/public", async (req: Request, res: Response) => {
     const category = req.query.category as string | undefined;
-    const posts = await storage.getPublicPosts(category);
+    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const offset = req.query.offset ? Number(req.query.offset) : 0;
+    const posts = await storage.getPublicPosts(category, limit, offset);
     res.json(posts);
   });
 
@@ -188,8 +190,9 @@ export async function registerRoutes(
       return res.status(403).json({ message: "No company associated with profile" });
     }
 
-    const category = req.query.category as string | undefined;
-    const posts = await storage.getCompanyPosts(profile.companyId, userId, category);
+    const limit = req.query.limit ? Number(req.query.limit) : 20;
+    const offset = req.query.offset ? Number(req.query.offset) : 0;
+    const posts = await storage.getCompanyPosts(profile.companyId, userId, req.query.category as string, limit, offset);
     res.json(posts);
   });
 
@@ -333,7 +336,7 @@ export async function registerRoutes(
     res.json(aggregated);
   });
 
-  // === LINKEDIN EXCHANGE ===
+  // === CHAT REQUESTS (LINKEDIN EXCHANGE) ===
   app.post(api.exchange.request.path, isAuthenticated, async (req: any, res: Response) => {
     const userId = req.user.id;
     try {
@@ -342,7 +345,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Cannot request exchange with yourself" });
       }
 
-      const request = await storage.createExchangeRequest(userId, input.recipientId);
+      const request = await storage.createChatRequest(userId, input.recipientId, input.introMessage);
       res.status(201).json(request);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -359,7 +362,7 @@ export async function registerRoutes(
     try {
       const input = api.exchange.respond.input.parse(req.body);
 
-      const request = await storage.getExchangeRequest(requestId);
+      const request = await storage.getChatRequest(requestId);
       if (!request) {
         return res.status(404).json({ message: "Request not found" });
       }
@@ -368,7 +371,7 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Not authorized to respond to this request" });
       }
 
-      const updated = await storage.respondToExchange(requestId, input.status);
+      const updated = await storage.respondToChatRequest(requestId, input.status);
       res.json(updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -382,10 +385,119 @@ export async function registerRoutes(
   app.get(api.exchange.list.path, isAuthenticated, async (req: any, res: Response) => {
     const userId = req.user.id;
     try {
-      const requests = await storage.getExchangeRequests(userId);
+      const requests = await storage.getChatRequests(userId);
       res.json(requests);
     } catch (err) {
       console.error("List exchange requests error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // === IDENTITY REVEAL ===
+  app.post(api.exchange.reveal.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const requestId = Number(req.params.id);
+    try {
+      const input = api.exchange.reveal.input.parse(req.body);
+
+      const result = await storage.revealIdentity(requestId, userId, input.agree);
+
+      let otherUserProfile = undefined;
+      if (result.mutualReveal) {
+        const chatRequest = result.chatRequest;
+        const otherUserId = chatRequest.requesterId === userId ? chatRequest.recipientId : chatRequest.requesterId;
+        otherUserProfile = await storage.getProfileWithDetails(otherUserId);
+      }
+
+      res.json({
+        success: true,
+        mutualReveal: result.mutualReveal,
+        otherUserProfile
+      });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Reveal identity error:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  // === PRIVATE MESSAGES ===
+  app.get(api.messages.list.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const chatRequestId = Number(req.params.id);
+    try {
+      const messages = await storage.getPrivateMessages(chatRequestId, userId);
+      res.json(messages);
+    } catch (err) {
+      console.error("Get messages error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.messages.send.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const chatRequestId = Number(req.params.id);
+    try {
+      const input = api.messages.send.input.parse(req.body);
+      const message = await storage.sendPrivateMessage(chatRequestId, userId, input.content);
+      res.status(201).json(message);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Send message error:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  // === SAFETY (BLOCKING) ===
+  app.post(api.safety.block.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    try {
+      const input = api.safety.block.input.parse(req.body);
+      if (input.userId === userId) {
+        return res.status(400).json({ message: "Cannot block yourself" });
+      }
+
+      await storage.blockUser(userId, input.userId);
+      res.status(201).json({ success: true, message: "User blocked successfully" });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Block user error:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.post(api.safety.unblock.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    try {
+      const input = api.safety.unblock.input.parse(req.body);
+      await storage.unblockUser(userId, input.userId);
+      res.json({ success: true, message: "User unblocked successfully" });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Unblock user error:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  app.get(api.safety.listBlocked.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    try {
+      const blocked = await storage.getBlockedUsers(userId);
+      res.json(blocked);
+    } catch (err) {
+      console.error("List blocked users error:", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });

@@ -4,8 +4,8 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Import Auth Models
-import { users } from "./models/auth.js";
-export * from "./models/auth.js";
+import { users } from "./models/auth.ts";
+export * from "./models/auth.ts";
 
 // === COMPANIES ===
 export const companies = pgTable("companies", {
@@ -163,22 +163,57 @@ export const weeklyCheckins = pgTable("weekly_checkins", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// === LINKEDIN EXCHANGES ===
-export const linkedinExchanges = pgTable("linkedin_exchanges", {
+// === CHAT REQUESTS (formerly LinkedIn Exchanges) ===
+export const chatRequests = pgTable("chat_requests", {
   id: serial("id").primaryKey(),
   requesterId: text("requester_id").notNull(), // User who requested
   recipientId: text("recipient_id").notNull(), // User who was asked
-  status: text("status", { enum: ["pending", "accepted", "rejected", "expired"] }).default("pending"),
+  introMessage: text("intro_message").notNull(), // Anonymous intro message
+  status: text("status", { enum: ["pending", "accepted", "rejected", "expired", "ignored"] }).default("pending"),
+  senderIdentityRevealed: boolean("sender_identity_revealed").default(false), // Has sender agreed to reveal?
+  receiverIdentityRevealed: boolean("receiver_identity_revealed").default(false), // Has receiver agreed to reveal?
   createdAt: timestamp("created_at").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Keep backward compatibility alias
+export const linkedinExchanges = chatRequests;
+
+// === PRIVATE MESSAGES ===
+export const privateMessages = pgTable("private_messages", {
+  id: serial("id").primaryKey(),
+  chatRequestId: integer("chat_request_id").notNull().references(() => chatRequests.id),
+  senderId: text("sender_id").notNull(), // FK to users.id
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// === USER BLOCKS ===
+export const blocks = pgTable("blocks", {
+  id: serial("id").primaryKey(),
+  blockerId: text("blocker_id").notNull(), // User who blocked
+  blockedId: text("blocked_id").notNull(), // User who was blocked
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // === NEW ZOD SCHEMAS ===
 export const insertWeeklyCheckinSchema = createInsertSchema(weeklyCheckins).omit({ id: true, createdAt: true, userId: true, companyId: true, weekStartDate: true });
-export const insertLinkedinExchangeSchema = createInsertSchema(linkedinExchanges).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertChatRequestSchema = createInsertSchema(chatRequests).omit({ id: true, createdAt: true, updatedAt: true, senderIdentityRevealed: true, receiverIdentityRevealed: true });
+export const insertPrivateMessageSchema = createInsertSchema(privateMessages).omit({ id: true, createdAt: true });
+export const insertBlockSchema = createInsertSchema(blocks).omit({ id: true, createdAt: true });
+
+// Keep backward compatibility
+export const insertLinkedinExchangeSchema = insertChatRequestSchema;
 
 // === NEW TYPES ===
 export type WeeklyCheckin = typeof weeklyCheckins.$inferSelect;
-export type LinkedinExchange = typeof linkedinExchanges.$inferSelect;
+export type ChatRequest = typeof chatRequests.$inferSelect;
+export type PrivateMessage = typeof privateMessages.$inferSelect;
+export type Block = typeof blocks.$inferSelect;
 export type CreateWeeklyCheckinInput = z.infer<typeof insertWeeklyCheckinSchema>;
+export type CreateChatRequestInput = z.infer<typeof insertChatRequestSchema>;
+export type CreatePrivateMessageInput = z.infer<typeof insertPrivateMessageSchema>;
+
+// Keep backward compatibility
+export type LinkedinExchange = ChatRequest;

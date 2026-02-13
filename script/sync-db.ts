@@ -12,9 +12,14 @@ async function verifySchema() {
         "reactions",
         "reports",
         "weekly_checkins",
-        "linkedin_exchanges",
+        "chat_requests",
         "sessions"
     ];
+
+    if (!pool) {
+        console.error("CRITICAL: Database pool is not initialized. Check your DATABASE_URL environment variable.");
+        process.exit(1);
+    }
 
     try {
         const client = await pool.connect();
@@ -54,7 +59,9 @@ async function verifySchema() {
         console.error("Error connecting to database:", error);
         process.exit(1);
     } finally {
-        await pool.end();
+        if (pool) {
+            await pool.end();
+        }
     }
 }
 

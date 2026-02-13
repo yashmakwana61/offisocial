@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { POST_CATEGORIES } from "@shared/schema";
 import Reactions from "./Reactions";
-import { UserCircle, MoreHorizontal, Flag, FileText, MessageCircle } from "lucide-react";
+import { UserCircle, MoreHorizontal, Flag, FileText, MessageCircle, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
@@ -11,25 +11,56 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useState } from "react";
+import { useState, memo } from "react";
 import ReportModal from "@/components/safety/ReportModal";
 import { Link } from "wouter";
+import { ChatRequestModal } from "@/components/chat/ChatRequestModal";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+
+// Pre-compute category pattern regex
+const CATEGORY_REGEX = new RegExp(
+    `(@(?:${POST_CATEGORIES
+        .map(cat => cat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|')}))`,
+    'g'
+);
 
 interface PostItemProps {
-    post: any; // Using any because post is enriched with extra fields from storage
+    post: any;
     fullView?: boolean;
 }
 
-export default function PostItem({ post, fullView = false }: PostItemProps) {
+const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProps) {
+    const { user } = useAuth();
+    const { toast } = useToast();
     const [isReportOpen, setIsReportOpen] = useState(false);
+    const [isChatRequestOpen, setIsChatRequestOpen] = useState(false);
+
+    const handleChatRequest = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!user) {
+            window.location.href = "/api/auth/linkedin";
+            return;
+        }
+
+        if (post.authorId === user.id) {
+            toast({
+                title: "Cannot request chat",
+                description: "You cannot request a private chat with yourself.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setIsChatRequestOpen(true);
+    };
 
     const renderContent = (content: string) => {
-        const categoryPattern = POST_CATEGORIES
-            .map(cat => cat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
-            .join('|');
-        const regex = new RegExp(`(@(?:${categoryPattern}))`, 'g');
-
-        const parts = content.split(regex);
+        if (!content) return null;
+        const parts = content.split(CATEGORY_REGEX);
         return parts.map((part, i) => {
             if (part.startsWith('@')) {
                 return <span key={i} className="text-primary font-bold">{part}</span>;
@@ -105,6 +136,7 @@ export default function PostItem({ post, fullView = false }: PostItemProps) {
                                         <img
                                             src={file.url}
                                             alt={file.name}
+                                            loading="lazy"
                                             className="max-h-[300px] rounded-xl object-contain border bg-muted/10 cursor-pointer hover:opacity-90 transition-opacity"
                                             onClick={() => window.open(file.url, '_blank')}
                                         />
@@ -129,14 +161,28 @@ export default function PostItem({ post, fullView = false }: PostItemProps) {
                     <div className="flex items-center justify-between gap-4">
                         <Reactions post={post} />
 
-                        <Link href={`/posts/${post.id}`}>
-                            <Button variant="ghost" size="sm" className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5">
-                                <MessageCircle className="w-4 h-4" />
-                                <span className="text-xs font-medium">
-                                    {post.commentCount || 0}
-                                </span>
-                            </Button>
-                        </Link>
+                        <div className="flex items-center gap-2">
+                            {(!user || post.authorId !== user?.id) && (
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={handleChatRequest}
+                                    className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5"
+                                >
+                                    <Lock className="w-4 h-4" />
+                                    <span className="text-xs font-medium">Chat</span>
+                                </Button>
+                            )}
+
+                            <Link href={`/posts/${post.id}`}>
+                                <Button variant="ghost" size="sm" className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5">
+                                    <MessageCircle className="w-4 h-4" />
+                                    <span className="text-xs font-medium">
+                                        {post.commentCount || 0}
+                                    </span>
+                                </Button>
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </Card>
@@ -147,6 +193,14 @@ export default function PostItem({ post, fullView = false }: PostItemProps) {
                 targetId={post.id}
                 targetType="post"
             />
+
+            <ChatRequestModal
+                isOpen={isChatRequestOpen}
+                onClose={() => setIsChatRequestOpen(false)}
+                recipientId={post.authorId || ""}
+            />
         </>
     );
-}
+});
+
+export default PostItem;

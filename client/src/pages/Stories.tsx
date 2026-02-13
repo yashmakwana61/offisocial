@@ -10,11 +10,11 @@ import { CreatePostDialog } from "@/components/CreatePostDialog";
 export default function Stories() {
     const { user } = useAuth();
     const [, setLocation] = useLocation();
-    const { data: posts, isLoading } = usePosts();
+    const { data: postsData, isLoading } = usePosts();
 
     // In a real app, we might have a specific 'story' type or category.
     // For now, we'll show recent interesting posts as "stories".
-    const stories = posts?.slice(0, 10) || [];
+    const stories = postsData?.pages.flat().slice(0, 10) || [];
 
     return (
         <div className="min-h-screen bg-background pb-24 md:pb-20">

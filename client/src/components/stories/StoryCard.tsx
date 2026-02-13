@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { Heart, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, memo } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToggleReaction } from "@/hooks/use-posts";
@@ -19,7 +19,7 @@ interface StoryCardProps {
     story: Story;
 }
 
-export default function StoryCard({ story }: StoryCardProps) {
+const StoryCard = memo(function StoryCard({ story }: StoryCardProps) {
     const { user } = useAuth();
     const toggleReaction = useToggleReaction();
 
@@ -70,5 +70,7 @@ export default function StoryCard({ story }: StoryCardProps) {
             </div>
         </Card>
     );
-}
+});
+
+export default StoryCard;
 

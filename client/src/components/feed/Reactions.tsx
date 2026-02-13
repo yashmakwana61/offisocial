@@ -16,8 +16,8 @@ export default function Reactions({ post }: ReactionsProps) {
     const supportCount = post.reactionCounts?.support ?? reactions.filter(r => r.type === 'support').length;
     const helpfulCount = post.reactionCounts?.helpful ?? reactions.filter(r => r.type === 'helpful').length;
 
-    const hasSupported = user ? reactions.some(r => r.userId === user?.id && r.type === 'support') : false;
-    const hasFoundHelpful = user ? reactions.some(r => r.userId === user?.id && r.type === 'helpful') : false;
+    const hasSupported = post.userReaction === 'support';
+    const hasFoundHelpful = post.userReaction === 'helpful';
 
     const handleToggle = (type: 'support' | 'helpful') => {
         if (!user) {

@@ -7,7 +7,7 @@ import WeeklyPrompt from "@/components/reality-check/WeeklyPrompt";
 import ResultsView from "@/components/reality-check/ResultsView";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Plus } from "lucide-react";
+import { Plus, MessageCircle } from "lucide-react";
 import { useLocation } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
 
@@ -55,13 +55,23 @@ export default function Feed() {
           </div>
 
           {isFullMember ? (
-            <div
-              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/10 flex items-center justify-center cursor-pointer hover:bg-primary/20 transition-colors"
-              onClick={() => setLocation("/profile")}
-            >
-              <span className="font-medium text-xs sm:text-sm text-primary">
-                {profile?.role ? profile.role.charAt(0).toUpperCase() : "M"}
-              </span>
+            <div className="flex items-center gap-3">
+              <div
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/10 flex items-center justify-center cursor-pointer hover:bg-primary/20 transition-colors"
+                onClick={() => setLocation("/chat-requests")}
+                title="Private Chats"
+              >
+                <MessageCircle className="w-5 h-5 text-primary" />
+              </div>
+              <div
+                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-primary/10 flex items-center justify-center cursor-pointer hover:bg-primary/20 transition-colors"
+                onClick={() => setLocation("/profile")}
+                title="Profile"
+              >
+                <span className="font-medium text-xs sm:text-sm text-primary">
+                  {profile?.role ? profile.role.charAt(0).toUpperCase() : "M"}
+                </span>
+              </div>
             </div>
           ) : (
             <Button

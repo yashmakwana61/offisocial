@@ -93,6 +93,8 @@ export const api = {
       path: '/api/posts',
       input: z.object({
         category: z.string().optional(),
+        limit: z.coerce.number().optional(),
+        offset: z.coerce.number().optional(),
       }).optional(),
       responses: {
         200: z.array(z.custom<typeof posts.$inferSelect & {
@@ -108,6 +110,8 @@ export const api = {
       path: '/api/posts/public',
       input: z.object({
         category: z.string().optional(),
+        limit: z.coerce.number().optional(),
+        offset: z.coerce.number().optional(),
       }).optional(),
       responses: {
         200: z.array(z.custom<Omit<typeof posts.$inferSelect, 'companyId' | 'authorId'> & {
@@ -225,7 +229,10 @@ export const api = {
     request: {
       method: 'POST' as const,
       path: '/api/exchange/request',
-      input: z.object({ recipientId: z.string() }),
+      input: z.object({
+        recipientId: z.string(),
+        introMessage: z.string().min(1).max(500),
+      }),
       responses: {
         201: z.custom<typeof linkedinExchanges.$inferSelect>(),
         400: errorSchemas.validation,
@@ -234,16 +241,32 @@ export const api = {
     respond: {
       method: 'POST' as const,
       path: '/api/exchange/:id/respond',
-      input: z.object({ status: z.enum(['accepted', 'rejected']) }),
+      input: z.object({ status: z.enum(['accepted', 'rejected', 'ignored']) }),
       responses: {
         200: z.custom<typeof linkedinExchanges.$inferSelect>(),
+      }
+    },
+    reveal: {
+      method: 'POST' as const,
+      path: '/api/exchange/:id/reveal',
+      input: z.object({ agree: z.boolean() }),
+      responses: {
+        200: z.object({
+          success: z.boolean(),
+          mutualReveal: z.boolean(),
+          otherUserProfile: z.custom<typeof profiles.$inferSelect & { companyName: string }>().optional(),
+        }),
       }
     },
     list: {
       method: 'GET' as const,
       path: '/api/exchange/requests',
       responses: {
-        200: z.array(z.custom<typeof linkedinExchanges.$inferSelect & { otherUserRole: string | null; otherUserId: string }>()),
+        200: z.array(z.custom<typeof linkedinExchanges.$inferSelect & {
+          otherUserRole: string | null;
+          otherUserId: string;
+          otherUserProfile?: typeof profiles.$inferSelect & { companyName: string };
+        }>()),
       }
     }
   },
@@ -255,6 +278,65 @@ export const api = {
       responses: {
         201: z.custom<typeof reports.$inferSelect>(),
         400: errorSchemas.validation,
+      }
+    }
+  },
+  messages: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/exchange/:id/messages',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          senderId: z.string(),
+          content: z.string(),
+          createdAt: z.string(),
+          isMine: z.boolean(),
+        })),
+      }
+    },
+    send: {
+      method: 'POST' as const,
+      path: '/api/exchange/:id/messages',
+      input: z.object({ content: z.string().min(1).max(2000) }),
+      responses: {
+        201: z.object({
+          id: z.number(),
+          senderId: z.string(),
+          content: z.string(),
+          createdAt: z.string(),
+          isMine: z.boolean(),
+        }),
+      }
+    }
+  },
+  safety: {
+    block: {
+      method: 'POST' as const,
+      path: '/api/safety/block',
+      input: z.object({ userId: z.string() }),
+      responses: {
+        201: z.object({ success: z.boolean(), message: z.string() }),
+        400: errorSchemas.validation,
+      }
+    },
+    unblock: {
+      method: 'POST' as const,
+      path: '/api/safety/unblock',
+      input: z.object({ userId: z.string() }),
+      responses: {
+        200: z.object({ success: z.boolean(), message: z.string() }),
+      }
+    },
+    listBlocked: {
+      method: 'GET' as const,
+      path: '/api/safety/blocked',
+      responses: {
+        200: z.array(z.object({
+          id: z.number(),
+          blockedId: z.string(),
+          createdAt: z.string(),
+        })),
       }
     }
   },

@@ -1,8 +1,8 @@
 import {
-  users, profiles, companies, posts, comments, reactions, reports, sessions, weeklyCheckins, linkedinExchanges,
+  users, profiles, companies, posts, comments, reactions, reports, sessions, weeklyCheckins, linkedinExchanges, chatRequests, privateMessages, blocks,
   type User, type Profile, type Company, type Post, type Comment, type Reaction, type Report,
   type CreatePostInput, type CreateCommentInput, type CreateWeeklyCheckinInput,
-  type WeeklyCheckin, type LinkedinExchange,
+  type WeeklyCheckin, type LinkedinExchange, type ChatRequest, type PrivateMessage, type Block,
   type UpsertUser
 } from "../shared/schema.js";
 import { db } from "./db.js";
@@ -21,6 +21,7 @@ function maskEmail(email: string | null): string {
 export interface IStorage {
   // Auth & Profile
   getUser(id: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
   getProfile(userId: string): Promise<Profile | undefined>;
   getProfileByHashedId(hashedId: string): Promise<Profile | undefined>;
@@ -37,8 +38,8 @@ export interface IStorage {
   findOrCreateCompany(name: string): Promise<Company>;
 
   // Posts
-  getCompanyPosts(companyId: number, userId: string, category?: string): Promise<(Post & { commentCount: number; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
-  getPublicPosts(category?: string): Promise<(Omit<Post, 'companyId' | 'authorId'> & { commentCount: number; reactionCounts: { support: number; helpful: number }; authorRole: string | null })[]>;
+  getCompanyPosts(companyId: number, userId: string, category?: string, limit?: number, offset?: number): Promise<(Post & { commentCount: number; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
+  getPublicPosts(category?: string, limit?: number, offset?: number): Promise<(Omit<Post, 'companyId' | 'authorId'> & { commentCount: number; reactionCounts: { support: number; helpful: number }; authorRole: string | null })[]>;
   getPost(id: number, userId: string): Promise<(Post & { reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null }) | undefined>;
   getPublicPost(id: number): Promise<(Omit<Post, 'companyId' | 'authorId'> & {
     comments: (Omit<Comment, 'authorId'> & { authorRole: string | null; reactionCounts: { support: number; helpful: number } })[];
@@ -59,11 +60,28 @@ export interface IStorage {
   getWeeklyCheckin(userId: string, weekStartDate: Date): Promise<WeeklyCheckin | undefined>;
   getAggregatedCheckins(companyId: number, weekStartDate: Date): Promise<{ averageMood: number; totalCheckins: number; categoryCounts: Record<string, number> }>;
 
-  // LinkedIn Exchanges
+  // Chat Requests (formerly LinkedIn Exchanges)
+  createChatRequest(requesterId: string, recipientId: string, introMessage: string): Promise<ChatRequest>;
+  getChatRequest(id: number): Promise<ChatRequest | undefined>;
+  respondToChatRequest(id: number, status: 'accepted' | 'rejected' | 'ignored'): Promise<ChatRequest>;
+  revealIdentity(chatRequestId: number, userId: string, agree: boolean): Promise<{ mutualReveal: boolean; chatRequest: ChatRequest }>;
+  getChatRequests(userId: string): Promise<(ChatRequest & { otherUserRole: string | null; otherUserId: string; otherUserProfile?: Profile & { companyName: string } })[]>;
+
+  // Backward compatibility
   createExchangeRequest(requesterId: string, recipientId: string): Promise<LinkedinExchange>;
   getExchangeRequest(id: number): Promise<LinkedinExchange | undefined>;
   respondToExchange(id: number, status: 'accepted' | 'rejected'): Promise<LinkedinExchange>;
   getExchangeRequests(userId: string): Promise<(LinkedinExchange & { otherUserRole: string | null; otherUserId: string })[]>;
+
+  // Private Messages
+  getPrivateMessages(chatRequestId: number, userId: string): Promise<{ id: number; senderId: string; content: string; createdAt: string; isMine: boolean }[]>;
+  sendPrivateMessage(chatRequestId: number, senderId: string, content: string): Promise<{ id: number; senderId: string; content: string; createdAt: string; isMine: boolean }>;
+
+  // User Blocking
+  blockUser(blockerId: string, blockedId: string): Promise<Block>;
+  unblockUser(blockerId: string, blockedId: string): Promise<void>;
+  getBlockedUsers(blockerId: string): Promise<Block[]>;
+  isBlocked(blockerId: string, blockedId: string): Promise<boolean>;
 
   // Reports
   createReport(userId: string, targetType: 'post' | 'comment', targetId: number, reason: string): Promise<Report>;
@@ -73,6 +91,11 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
   }
 
@@ -264,58 +287,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createExchangeRequest(requesterId: string, recipientId: string): Promise<LinkedinExchange> {
-    // Check if pending exists
-    const [existing] = await db.select().from(linkedinExchanges).where(and(
-      eq(linkedinExchanges.requesterId, requesterId),
-      eq(linkedinExchanges.recipientId, recipientId),
-      eq(linkedinExchanges.status, 'pending')
-    ));
-
-    if (existing) return existing;
-
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 day expiry
-
-    const [request] = await db.insert(linkedinExchanges).values({
-      requesterId,
-      recipientId,
-      expiresAt,
-    }).returning();
-    return request;
+    // Backward compatibility: use new method with default intro message
+    return await this.createChatRequest(requesterId, recipientId, "I'd like to connect with you.");
   }
 
   async getExchangeRequest(id: number): Promise<LinkedinExchange | undefined> {
-    const [request] = await db.select().from(linkedinExchanges).where(eq(linkedinExchanges.id, id));
-    return request;
+    return await this.getChatRequest(id);
   }
 
   async respondToExchange(id: number, status: 'accepted' | 'rejected'): Promise<LinkedinExchange> {
-    const [updated] = await db.update(linkedinExchanges)
-      .set({ status, updatedAt: new Date() })
-      .where(eq(linkedinExchanges.id, id))
-      .returning();
-    return updated;
+    return await this.respondToChatRequest(id, status);
   }
 
   async getExchangeRequests(userId: string): Promise<any[]> {
-    // Fetch requests where user is either requester or recipient
-    const requests = await db.select().from(linkedinExchanges).where(
-      sql`${linkedinExchanges.requesterId} = ${userId} OR ${linkedinExchanges.recipientId} = ${userId}`
-    ).orderBy(desc(linkedinExchanges.createdAt));
-
-    const enriched = await Promise.all(requests.map(async (req: LinkedinExchange) => {
-      const isRequester = req.requesterId === userId;
-      const otherUserId = isRequester ? req.recipientId : req.requesterId;
-      const [otherProfile] = await db.select().from(profiles).where(eq(profiles.userId, otherUserId));
-
-      return {
-        ...req,
-        otherUserRole: otherProfile?.role || "Verified Employee",
-        otherUserId
-      };
-    }));
-
-    return enriched;
+    return await this.getChatRequests(userId);
   }
 
   async createReport(userId: string, targetType: 'post' | 'comment', targetId: number, reason: string): Promise<Report> {
@@ -328,42 +313,37 @@ export class DatabaseStorage implements IStorage {
     return report;
   }
 
-  async getCompanyPosts(companyId: number, userId: string, category?: string): Promise<any[]> {
+  async getCompanyPosts(companyId: number, userId: string, category?: string, limit = 20, offset = 0): Promise<any[]> {
     const conditions = [eq(posts.companyId, companyId)];
     if (category) {
       conditions.push(eq(posts.category, category as any));
     }
 
-    const postsList = await db.select().from(posts)
+    const postsList = await db.select({
+      post: posts,
+      commentCount: sql<number>`(SELECT count(*) FROM ${comments} WHERE ${comments.postId} = ${posts.id})`,
+      supportCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.type} = 'support')`,
+      helpfulCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.type} = 'helpful')`,
+      userReaction: sql<string | null>`(SELECT ${reactions.type} FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.userId} = ${userId} LIMIT 1)`,
+    })
+      .from(posts)
       .where(and(...conditions))
-      .orderBy(desc(posts.createdAt));
+      .orderBy(desc(posts.createdAt))
+      .limit(limit)
+      .offset(offset);
 
-    // Exit Mode prioritization logic could be added here
-    // e.g., if user is in Exit Mode, boost posts with category "Policy / Work Discussion" or similar?
-    // For now, we return standard feed. 
-
-    // For each post, get counts and user reaction
-    // N+1 query problem here but okay for MVP scale
-    const enrichedPosts = await Promise.all(postsList.map(async (post: Post) => {
-      const [commentCount] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(comments)
-        .where(eq(comments.postId, post.id));
-
-      const reactionStats = await this.getReactionStats('post', post.id, userId);
-
-      return {
-        ...post,
-        commentCount: Number(commentCount.count),
-        reactionCounts: reactionStats.counts,
-        userReaction: reactionStats.userReaction
-      };
+    return postsList.map((item: any) => ({
+      ...item.post,
+      commentCount: Number(item.commentCount),
+      reactionCounts: {
+        support: Number(item.supportCount),
+        helpful: Number(item.helpfulCount)
+      },
+      userReaction: item.userReaction
     }));
-
-    return enrichedPosts;
   }
 
-  async getPublicPosts(category?: string): Promise<any[]> {
+  async getPublicPosts(category?: string, limit = 20, offset = 0): Promise<any[]> {
     const safeCategories = [
       "Mental Stress / Burnout",
       "Toxic Work Culture",
@@ -379,44 +359,45 @@ export class DatabaseStorage implements IStorage {
       conditions.push(inArray(posts.category, safeCategories as any[]));
     }
 
-    const postsList = await db.select().from(posts)
+    const postsList = await db.select({
+      post: posts,
+      authorRole: profiles.role,
+      commentCount: sql<number>`(SELECT count(*) FROM ${comments} WHERE ${comments.postId} = ${posts.id})`,
+      supportCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.type} = 'support')`,
+      helpfulCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.type} = 'helpful')`,
+    })
+      .from(posts)
+      .leftJoin(profiles, eq(posts.authorId, profiles.userId))
       .where(and(...conditions))
       .orderBy(desc(posts.createdAt))
-      .limit(50);
+      .limit(limit)
+      .offset(offset);
 
-    // Fetch all companies once for sanitization
+    // Fetch all companies once for sanitization (keeping this for now, though it's still a bit heavy if there are many)
     const allCompanies = await db.select({ name: companies.name }).from(companies);
 
-    const enrichedPosts = await Promise.all(postsList.map(async (post: Post) => {
-      // Get author role from profile
-      const [profile] = await db.select().from(profiles).where(eq(profiles.userId, post.authorId));
-
-      const [commentCount] = await db
-        .select({ count: sql<number>`count(*)` })
-        .from(comments)
-        .where(eq(comments.postId, post.id));
-
-      const reactionStats = await this.getReactionStats('post', post.id, 'GUEST');
-
-      let sanitizedContent = post.content;
+    return postsList.map((item: any) => {
+      let sanitizedContent = item.post.content;
       allCompanies.forEach((c: { name: string }) => {
         const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         sanitizedContent = sanitizedContent.replace(regex, "[REDACTED]");
       });
 
       return {
-        id: post.id,
+        id: item.post.id,
         content: sanitizedContent,
-        category: post.category,
-        createdAt: post.createdAt,
-        updatedAt: post.updatedAt,
-        commentCount: Number(commentCount.count),
-        reactionCounts: reactionStats.counts,
-        authorRole: profile?.role || "Verified Employee"
+        category: item.post.category,
+        createdAt: item.post.createdAt,
+        updatedAt: item.post.updatedAt,
+        authorId: item.post.authorId,
+        commentCount: Number(item.commentCount),
+        reactionCounts: {
+          support: Number(item.supportCount),
+          helpful: Number(item.helpfulCount)
+        },
+        authorRole: item.authorRole || "Verified Employee"
       };
-    }));
-
-    return enrichedPosts;
+    });
   }
 
   async getPost(id: number, userId: string): Promise<any | undefined> {
@@ -576,6 +557,193 @@ export class DatabaseStorage implements IStorage {
 
     return { counts, userReaction };
   }
+
+  // === CHAT REQUESTS (New Implementation) ===
+  async createChatRequest(requesterId: string, recipientId: string, introMessage: string): Promise<ChatRequest> {
+    // Check if pending exists
+    const [existing] = await db.select().from(chatRequests).where(and(
+      eq(chatRequests.requesterId, requesterId),
+      eq(chatRequests.recipientId, recipientId),
+      eq(chatRequests.status, 'pending')
+    ));
+
+    if (existing) return existing;
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7); // 7 day expiry
+
+    const [request] = await db.insert(chatRequests).values({
+      requesterId,
+      recipientId,
+      introMessage,
+      expiresAt,
+    }).returning();
+    return request;
+  }
+
+  async getChatRequest(id: number): Promise<ChatRequest | undefined> {
+    const [request] = await db.select().from(chatRequests).where(eq(chatRequests.id, id));
+    return request;
+  }
+
+  async respondToChatRequest(id: number, status: 'accepted' | 'rejected' | 'ignored'): Promise<ChatRequest> {
+    const [updated] = await db.update(chatRequests)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(chatRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async revealIdentity(chatRequestId: number, userId: string, agree: boolean): Promise<{ mutualReveal: boolean; chatRequest: ChatRequest }> {
+    const chatRequest = await this.getChatRequest(chatRequestId);
+    if (!chatRequest) throw new Error('Chat request not found');
+
+    const isRequester = chatRequest.requesterId === userId;
+    const isRecipient = chatRequest.recipientId === userId;
+
+    if (!isRequester && !isRecipient) {
+      throw new Error('Not authorized to reveal identity for this chat request');
+    }
+
+    const updates: Partial<ChatRequest> = {};
+    if (isRequester) {
+      updates.senderIdentityRevealed = agree;
+    } else {
+      updates.receiverIdentityRevealed = agree;
+    }
+
+    const [updated] = await db.update(chatRequests)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(chatRequests.id, chatRequestId))
+      .returning();
+
+    const mutualReveal = updated.senderIdentityRevealed && updated.receiverIdentityRevealed;
+
+    return { mutualReveal, chatRequest: updated };
+  }
+
+  async getChatRequests(userId: string): Promise<any[]> {
+    // Fetch requests where user is either requester or recipient
+    const requests = await db.select().from(chatRequests).where(
+      sql`${chatRequests.requesterId} = ${userId} OR ${chatRequests.recipientId} = ${userId}`
+    ).orderBy(desc(chatRequests.createdAt));
+
+    const enriched = await Promise.all(requests.map(async (req: ChatRequest) => {
+      const isRequester = req.requesterId === userId;
+      const otherUserId = isRequester ? req.recipientId : req.requesterId;
+      const [otherProfile] = await db.select().from(profiles).where(eq(profiles.userId, otherUserId));
+
+      // Only include full profile if mutual reveal has happened
+      let otherUserProfile = undefined;
+      if (req.senderIdentityRevealed && req.receiverIdentityRevealed) {
+        const company = otherProfile?.companyId ? await this.getCompany(otherProfile.companyId) : null;
+        const otherUser = await this.getUser(otherUserId);
+        otherUserProfile = {
+          ...otherProfile,
+          companyName: company?.name || "Unknown Company",
+        };
+      }
+
+      return {
+        ...req,
+        otherUserRole: otherProfile?.role || "Verified Employee",
+        otherUserId,
+        otherUserProfile
+      };
+    }));
+
+    return enriched;
+  }
+
+  // === PRIVATE MESSAGES ===
+  async getPrivateMessages(chatRequestId: number, userId: string): Promise<{ id: number; senderId: string; content: string; createdAt: string; isMine: boolean }[]> {
+    const chatRequest = await this.getChatRequest(chatRequestId);
+    if (!chatRequest) throw new Error('Chat request not found');
+
+    // Verify user is part of this chat
+    if (chatRequest.requesterId !== userId && chatRequest.recipientId !== userId) {
+      throw new Error('Not authorized to view messages for this chat');
+    }
+
+    const messages = await db.select().from(privateMessages)
+      .where(eq(privateMessages.chatRequestId, chatRequestId))
+      .orderBy(privateMessages.createdAt);
+
+    return messages.map((msg: PrivateMessage) => ({
+      id: msg.id,
+      senderId: msg.senderId,
+      content: msg.content,
+      createdAt: msg.createdAt?.toISOString() || new Date().toISOString(),
+      isMine: msg.senderId === userId
+    }));
+  }
+
+  async sendPrivateMessage(chatRequestId: number, senderId: string, content: string): Promise<{ id: number; senderId: string; content: string; createdAt: string; isMine: boolean }> {
+    const chatRequest = await this.getChatRequest(chatRequestId);
+    if (!chatRequest) throw new Error('Chat request not found');
+
+    // Verify user is part of this chat
+    if (chatRequest.requesterId !== senderId && chatRequest.recipientId !== senderId) {
+      throw new Error('Not authorized to send messages in this chat');
+    }
+
+    // Verify chat is accepted
+    if (chatRequest.status !== 'accepted') {
+      throw new Error('Chat request must be accepted before sending messages');
+    }
+
+    const [message] = await db.insert(privateMessages).values({
+      chatRequestId,
+      senderId,
+      content,
+    }).returning();
+
+    return {
+      id: message.id,
+      senderId: message.senderId,
+      content: message.content,
+      createdAt: message.createdAt?.toISOString() || new Date().toISOString(),
+      isMine: true
+    };
+  }
+
+  // === USER BLOCKING ===
+  async blockUser(blockerId: string, blockedId: string): Promise<Block> {
+    // Check if already blocked
+    const [existing] = await db.select().from(blocks).where(and(
+      eq(blocks.blockerId, blockerId),
+      eq(blocks.blockedId, blockedId)
+    ));
+
+    if (existing) return existing;
+
+    const [block] = await db.insert(blocks).values({
+      blockerId,
+      blockedId,
+    }).returning();
+
+    return block;
+  }
+
+  async unblockUser(blockerId: string, blockedId: string): Promise<void> {
+    await db.delete(blocks).where(and(
+      eq(blocks.blockerId, blockerId),
+      eq(blocks.blockedId, blockedId)
+    ));
+  }
+
+  async getBlockedUsers(blockerId: string): Promise<Block[]> {
+    return await db.select().from(blocks).where(eq(blocks.blockerId, blockerId));
+  }
+
+  async isBlocked(blockerId: string, blockedId: string): Promise<boolean> {
+    const [block] = await db.select().from(blocks).where(and(
+      eq(blocks.blockerId, blockerId),
+      eq(blocks.blockedId, blockedId)
+    ));
+    return !!block;
+  }
+
   async searchCompanies(query: string): Promise<Company[]> {
     return await db.select().from(companies).where(like(sql`lower(${companies.name})`, `%${query.toLowerCase()}%`)).limit(10);
   }

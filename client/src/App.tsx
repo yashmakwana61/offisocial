@@ -14,6 +14,8 @@ import PostDetail from "@/pages/PostDetail";
 import Onboarding from "@/pages/Onboarding";
 import Profile from "@/pages/Profile";
 import Stories from "@/pages/Stories";
+import ChatRequests from "@/pages/ChatRequests";
+import ChatPage from "@/pages/ChatPage";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading: authLoading } = useAuth();
@@ -55,6 +57,12 @@ function Router() {
       </Route>
       <Route path="/stories">
         <ProtectedRoute component={Stories} />
+      </Route>
+      <Route path="/chat-requests">
+        <ProtectedRoute component={ChatRequests} />
+      </Route>
+      <Route path="/chat/:id">
+        <ProtectedRoute component={ChatPage} />
       </Route>
       <Route component={NotFound} />
     </Switch>
