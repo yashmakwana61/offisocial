@@ -4,8 +4,8 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Import Auth Models
-import { users } from "./models/auth.ts";
-export * from "./models/auth.ts";
+import { users } from "./models/auth.js";
+export * from "./models/auth.js";
 
 // === COMPANIES ===
 export const companies = pgTable("companies", {
