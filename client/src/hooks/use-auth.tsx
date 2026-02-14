@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import type { User } from "@shared/models/auth";
 
 async function fetchUser(): Promise<User | null> {
@@ -44,4 +45,10 @@ export function useAuth() {
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
   };
+}
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  // The query client manages the auth state, so this is just a passthrough 
+  // or a placeholder if we need global auth effects later.
+  return <>{ children } </>;
 }

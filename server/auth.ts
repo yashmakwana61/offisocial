@@ -60,7 +60,18 @@ export async function setupAuth(app: Express) {
         console.log(`[AUTH DEBUG] Deserializing user: ${id}`);
         try {
             const user = await storage.getUser(id);
-            cb(null, user);
+            if (!user) {
+                return cb(null, false);
+            }
+
+            const profile = await storage.getProfile(id);
+            const enrichedUser = {
+                ...user,
+                role: profile?.role || "guest",
+                username: user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : "User"
+            };
+
+            cb(null, enrichedUser);
         } catch (err) {
             console.error(`[AUTH DEBUG] Deserialize error for ${id}:`, err);
             cb(err);

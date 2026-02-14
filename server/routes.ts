@@ -5,6 +5,7 @@ import { storage } from "./storage.js";
 import { z } from "zod";
 import type { Express, Request, Response } from "express";
 import type { Server } from "http";
+import { emitEvent } from "./socket";
 
 export async function registerRoutes(
   app: Express,
@@ -232,6 +233,7 @@ export async function registerRoutes(
         ...input,
         attachments: req.body.attachments || []
       });
+      emitEvent("post:created", post);
       res.status(201).json(post);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -252,6 +254,7 @@ export async function registerRoutes(
         ...input,
         parentId: req.body.parentId
       });
+      emitEvent("comment:created", { ...comment, postId });
       res.status(201).json(comment);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -268,6 +271,11 @@ export async function registerRoutes(
     try {
       const input = api.reactions.toggle.input.parse(req.body);
       const result = await storage.toggleReaction(userId, input.targetType, input.targetId, input.type);
+      emitEvent("reaction:updated", {
+        targetType: input.targetType,
+        targetId: input.targetId,
+        ...result
+      });
       res.json({ success: true, ...result });
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -449,6 +457,7 @@ export async function registerRoutes(
     try {
       const input = api.messages.send.input.parse(req.body);
       const message = await storage.sendPrivateMessage(chatRequestId, userId, input.content);
+      emitEvent("message:created", message);
       res.status(201).json(message);
     } catch (err) {
       if (err instanceof z.ZodError) {

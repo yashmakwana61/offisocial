@@ -353,12 +353,14 @@ export class DatabaseStorage implements IStorage {
 
     const postsList = await db.select({
       post: posts,
+      authorRole: profiles.role,
       commentCount: sql<number>`(SELECT count(*) FROM ${comments} WHERE ${comments.postId} = ${posts.id})`,
       supportCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.type} = 'support')`,
       helpfulCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.type} = 'helpful')`,
       userReaction: sql<string | null>`(SELECT ${reactions.type} FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.userId} = ${userId} LIMIT 1)`,
     })
       .from(posts)
+      .leftJoin(profiles, eq(posts.authorId, profiles.userId))
       .where(and(...conditions))
       .orderBy(desc(posts.createdAt))
       .limit(limit)
@@ -366,12 +368,13 @@ export class DatabaseStorage implements IStorage {
 
     return postsList.map((item: any) => ({
       ...item.post,
+      authorRole: item.authorRole || "Verified Employee",
       commentCount: Number(item.commentCount),
       reactionCounts: {
         support: Number(item.supportCount),
         helpful: Number(item.helpfulCount)
       },
-      userReaction: item.userReaction
+      userReaction: item.userReaction || null
     }));
   }
 
@@ -446,9 +449,11 @@ export class DatabaseStorage implements IStorage {
     if (!post) return undefined;
 
     const reactionStats = await this.getReactionStats('post', post.id, userId);
+    const [commentCount] = await db.select({ count: sql<number>`count(*)` }).from(comments).where(eq(comments.postId, id));
 
     return {
       ...post,
+      commentCount: Number(commentCount.count),
       reactionCounts: reactionStats.counts,
       userReaction: reactionStats.userReaction
     };
@@ -513,6 +518,7 @@ export class DatabaseStorage implements IStorage {
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
       authorRole: profile?.role || "Verified Employee",
+      commentCount: enrichedComments.length,
       reactionCounts: reactionStats.counts,
       userReaction: reactionStats.userReaction,
       comments: enrichedComments

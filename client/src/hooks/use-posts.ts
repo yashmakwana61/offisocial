@@ -1,9 +1,11 @@
 import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { api, buildUrl } from "@shared/routes";
 import { type CreatePostInput, type CreateCommentInput } from "@shared/schema";
+import { useSocket } from "../lib/socket";
+import { useEffect } from "react";
 
 export function usePosts(category?: string, enabled = true, searchQuery?: string) {
-  return useInfiniteQuery({
+  const query = useInfiniteQuery({
     queryKey: [api.posts.list.path, category, searchQuery],
     queryFn: async ({ pageParam = 0 }) => {
       const url = new URL(window.location.origin + api.posts.list.path);
@@ -23,10 +25,40 @@ export function usePosts(category?: string, enabled = true, searchQuery?: string
     },
     enabled,
   });
+
+  const { socket } = useSocket();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!socket) return;
+    const onPostCreated = (newPost: any) => {
+      queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
+    };
+    const onReactionUpdated = (data: any) => {
+      if (data.targetType === 'post') {
+        queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
+      }
+    };
+    const onCommentCreated = (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
+    };
+
+    socket.on("post:created", onPostCreated);
+    socket.on("reaction:updated", onReactionUpdated);
+    socket.on("comment:created", onCommentCreated);
+
+    return () => {
+      socket.off("post:created", onPostCreated);
+      socket.off("reaction:updated", onReactionUpdated);
+      socket.off("comment:created", onCommentCreated);
+    };
+  }, [socket, queryClient]);
+
+  return query;
 }
 
 export function usePublicPosts(category?: string, enabled = true, searchQuery?: string) {
-  return useInfiniteQuery({
+  const query = useInfiniteQuery({
     queryKey: [api.posts.publicList.path, category, searchQuery],
     queryFn: async ({ pageParam = 0 }) => {
       const url = new URL(window.location.origin + api.posts.publicList.path);
@@ -46,10 +78,40 @@ export function usePublicPosts(category?: string, enabled = true, searchQuery?: 
     },
     enabled,
   });
+
+  const { socket } = useSocket();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!socket) return;
+    const onPostCreated = (newPost: any) => {
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
+    };
+    const onReactionUpdated = (data: any) => {
+      if (data.targetType === 'post') {
+        queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
+      }
+    };
+    const onCommentCreated = (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
+    };
+
+    socket.on("post:created", onPostCreated);
+    socket.on("reaction:updated", onReactionUpdated);
+    socket.on("comment:created", onCommentCreated);
+
+    return () => {
+      socket.off("post:created", onPostCreated);
+      socket.off("reaction:updated", onReactionUpdated);
+      socket.off("comment:created", onCommentCreated);
+    };
+  }, [socket, queryClient]);
+
+  return query;
 }
 
 export function usePost(id: number) {
-  return useQuery({
+  const query = useQuery({
     queryKey: [api.posts.get.path, id],
     queryFn: async () => {
       const url = buildUrl(api.posts.get.path, { id });
@@ -59,10 +121,39 @@ export function usePost(id: number) {
     },
     enabled: !!id,
   });
+
+  const { socket } = useSocket();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!socket || !id) return;
+
+    const onCommentCreated = (comment: any) => {
+      if (comment.postId === id) {
+        queryClient.invalidateQueries({ queryKey: [api.posts.get.path, id] });
+      }
+    };
+
+    const onReactionUpdated = (data: any) => {
+      if (data.targetType === 'post' && data.targetId === id) {
+        queryClient.invalidateQueries({ queryKey: [api.posts.get.path, id] });
+      }
+    };
+
+    socket.on("comment:created", onCommentCreated);
+    socket.on("reaction:updated", onReactionUpdated);
+
+    return () => {
+      socket.off("comment:created", onCommentCreated);
+      socket.off("reaction:updated", onReactionUpdated);
+    };
+  }, [socket, id, queryClient]);
+
+  return query;
 }
 
 export function usePublicPost(id: number) {
-  return useQuery({
+  const query = useQuery({
     queryKey: [api.posts.publicGet.path, id],
     queryFn: async () => {
       const url = buildUrl(api.posts.publicGet.path, { id });
@@ -72,6 +163,35 @@ export function usePublicPost(id: number) {
     },
     enabled: !!id,
   });
+
+  const { socket } = useSocket();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!socket || !id) return;
+
+    const onCommentCreated = (comment: any) => {
+      if (comment.postId === id) {
+        queryClient.invalidateQueries({ queryKey: [api.posts.publicGet.path, id] });
+      }
+    };
+
+    const onReactionUpdated = (data: any) => {
+      if (data.targetType === 'post' && data.targetId === id) {
+        queryClient.invalidateQueries({ queryKey: [api.posts.publicGet.path, id] });
+      }
+    };
+
+    socket.on("comment:created", onCommentCreated);
+    socket.on("reaction:updated", onReactionUpdated);
+
+    return () => {
+      socket.off("comment:created", onCommentCreated);
+      socket.off("reaction:updated", onReactionUpdated);
+    };
+  }, [socket, id, queryClient]);
+
+  return query;
 }
 
 export function useCreatePost() {
@@ -90,6 +210,7 @@ export function useCreatePost() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
     },
   });
 }
@@ -113,7 +234,9 @@ export function useCreateComment() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: [api.posts.get.path, variables.postId] });
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicGet.path, variables.postId] });
       queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
     },
   });
 }
@@ -136,100 +259,91 @@ export function useToggleReaction() {
       return res.json();
     },
     onMutate: async (variables) => {
-      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+      const targetId = String(variables.targetId);
+      console.log(`[REACTIONS] Start mutate: ${variables.targetType}:${targetId}, type=${variables.type}`);
+
+      // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: [api.posts.list.path] });
       await queryClient.cancelQueries({ queryKey: [api.posts.publicList.path] });
       if (variables.targetType === 'post') {
-        await queryClient.cancelQueries({ queryKey: [api.posts.get.path, variables.targetId] });
+        await queryClient.cancelQueries({ queryKey: [api.posts.get.path] });
+        await queryClient.cancelQueries({ queryKey: [api.posts.publicGet.path] });
       }
 
-      // Snapshot the previous values for all matching queries
-      console.log(`[DEBUG] Mutation started for ${variables.targetType}:${variables.targetId}, type=${variables.type}`);
+      // Snapshot previous values
       const previousQueries = queryClient.getQueriesData({ queryKey: [api.posts.list.path] });
       const previousPublicQueries = queryClient.getQueriesData({ queryKey: [api.posts.publicList.path] });
-      console.log(`[DEBUG] Found ${previousQueries.length} member queries and ${previousPublicQueries.length} public queries in cache`);
-      const previousPostDetail = variables.targetType === 'post'
-        ? queryClient.getQueryData([api.posts.get.path, variables.targetId])
-        : null;
+      const previousDetails = queryClient.getQueriesData({ queryKey: [api.posts.get.path] });
+      const previousPublicDetails = queryClient.getQueriesData({ queryKey: [api.posts.publicGet.path] });
 
-      // Helper function to optimistic update a post object
-      const updatePost = (post: any) => {
-        if (!post) return post;
-        if (post.id !== variables.targetId) {
-          // console.log(`[DEBUG] ID mismatch: post.id=${post.id} (${typeof post.id}) != targetId=${variables.targetId} (${typeof variables.targetId})`);
-          return post;
-        }
-        console.log(`[DEBUG] Found target post! Current supportCount=${post.reactionCounts?.support}`);
+      // Unified update logic for a single post object
+      const updatePostObject = (post: any) => {
+        if (!post || String(post.id) !== targetId) return post;
 
-        const newReactionCounts = {
-          support: post.reactionCounts?.support ?? 0,
-          helpful: post.reactionCounts?.helpful ?? 0,
-          ...post.reactionCounts
+        const oldReaction = post.userReaction;
+        const newReaction = oldReaction === variables.type ? null : variables.type;
+
+        const counts = {
+          support: Number(post.reactionCounts?.support || 0),
+          helpful: Number(post.reactionCounts?.helpful || 0)
         };
-        let newUserReaction = post.userReaction;
 
-        if (post.userReaction === variables.type) {
-          // Toggle off
-          newReactionCounts[variables.type] = Math.max(0, (newReactionCounts[variables.type] || 0) - 1);
-          newUserReaction = null;
-        } else {
-          // Change type or add new
-          if (post.userReaction) {
-            newReactionCounts[post.userReaction] = Math.max(0, (newReactionCounts[post.userReaction] || 0) - 1);
-          }
-          newReactionCounts[variables.type] = (newReactionCounts[variables.type] || 0) + 1;
-          newUserReaction = variables.type;
+        // If we had a previous reaction, decrement that count
+        if (oldReaction) {
+          counts[oldReaction] = Math.max(0, counts[oldReaction] - 1);
+        }
+
+        // If we have a new reaction, increment that count
+        if (newReaction) {
+          counts[newReaction] = counts[newReaction] + 1;
         }
 
         return {
           ...post,
-          reactionCounts: newReactionCounts,
-          userReaction: newUserReaction,
+          userReaction: newReaction,
+          reactionCounts: counts
         };
       };
 
-      // Optimistically update Infinite Queries
-      const updateInfiniteData = (oldData: any) => {
+      // Updater for infinite queries
+      const infiniteUpdater = (oldData: any) => {
         if (!oldData || !oldData.pages) return oldData;
         return {
           ...oldData,
-          pages: oldData.pages.map((page: any[]) => page.map(updatePost)),
+          pages: oldData.pages.map((page: any[]) => page.map(updatePostObject)),
         };
       };
 
-      queryClient.setQueriesData({ queryKey: [api.posts.list.path] }, updateInfiniteData);
-      queryClient.setQueriesData({ queryKey: [api.posts.publicList.path] }, updateInfiniteData);
+      // Apply optimistic updates to all matching feed queries
+      queryClient.setQueriesData({ queryKey: [api.posts.list.path] }, infiniteUpdater);
+      queryClient.setQueriesData({ queryKey: [api.posts.publicList.path] }, infiniteUpdater);
 
-      // Optimistically update Single Post Query
+      // Apply optimistic updates to all matching detail queries
       if (variables.targetType === 'post') {
-        queryClient.setQueryData([api.posts.get.path, variables.targetId], (old: any) => {
-          if (!old) return old;
-          return updatePost(old);
-        });
+        queryClient.setQueriesData({ queryKey: [api.posts.get.path] }, (old: any) => updatePostObject(old));
+        queryClient.setQueriesData({ queryKey: [api.posts.publicGet.path] }, (old: any) => updatePostObject(old));
       }
 
-      return { previousQueries, previousPublicQueries, previousPostDetail };
+      return { previousQueries, previousPublicQueries, previousDetails, previousPublicDetails };
     },
-    onError: (err, variables, context: any) => {
-      // Rollback on error
+    onError: (err, variables, context) => {
+      console.error(`[REACTIONS] Mutate error:`, err);
       if (context) {
-        context.previousQueries?.forEach(([queryKey, oldData]: [any, any]) => {
-          queryClient.setQueryData(queryKey, oldData);
-        });
-        context.previousPublicQueries?.forEach(([queryKey, oldData]: [any, any]) => {
-          queryClient.setQueryData(queryKey, oldData);
-        });
-        if (variables.targetType === 'post') {
-          queryClient.setQueryData([api.posts.get.path, variables.targetId], context.previousPostDetail);
-        }
+        context.previousQueries?.forEach(([key, val]: any) => queryClient.setQueryData(key, val));
+        context.previousPublicQueries?.forEach(([key, val]: any) => queryClient.setQueryData(key, val));
+        context.previousDetails?.forEach(([key, val]: any) => queryClient.setQueryData(key, val));
+        context.previousPublicDetails?.forEach(([key, val]: any) => queryClient.setQueryData(key, val));
       }
     },
     onSettled: (data, error, variables) => {
-      // Refresh to ensure server sync
+      // Final invalidations to ensure sync
       queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
       if (variables.targetType === 'post') {
-        queryClient.invalidateQueries({ queryKey: [api.posts.get.path, variables.targetId] });
+        const targetId = variables.targetId;
+        // Invalidate specific detail queries
+        queryClient.invalidateQueries({ queryKey: [api.posts.get.path, targetId] });
+        queryClient.invalidateQueries({ queryKey: [api.posts.publicGet.path, targetId] });
       }
     },
   });
@@ -317,6 +431,24 @@ export function useRevealIdentity() {
 }
 
 export function usePrivateMessages(chatRequestId: number) {
+  const { socket } = useSocket();
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    if (!socket || !chatRequestId) return;
+
+    const onMessageCreated = (message: any) => {
+      if (message.chatRequestId === chatRequestId) {
+        queryClient.invalidateQueries({ queryKey: [api.messages.list.path, chatRequestId] });
+      }
+    };
+
+    socket.on("message:created", onMessageCreated);
+    return () => {
+      socket.off("message:created", onMessageCreated);
+    };
+  }, [socket, chatRequestId, queryClient]);
+
   return useQuery({
     queryKey: [api.messages.list.path, chatRequestId],
     queryFn: async () => {
@@ -326,7 +458,6 @@ export function usePrivateMessages(chatRequestId: number) {
       return api.messages.list.responses[200].parse(await res.json());
     },
     enabled: !!chatRequestId,
-    refetchInterval: 5000, // Poll for new messages every 5s
   });
 }
 

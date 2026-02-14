@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import type { User } from "@shared/models/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,7 +12,7 @@ import {
     Moon,
     Sun,
     LogOut,
-    User
+    User as UserIcon
 } from "lucide-react";
 import {
     DropdownMenu,
@@ -29,6 +30,7 @@ import { useState } from "react";
 
 export default function Navbar() {
     const { user, logout } = useAuth();
+    const typedUser = user as User | null;
     const { theme, setTheme } = useTheme();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -88,7 +90,7 @@ export default function Navbar() {
                         <span className="sr-only">Toggle theme</span>
                     </Button>
 
-                    {user ? (
+                    {typedUser ? (
                         <>
                             <Link href="/chat-requests">
                                 <Button variant="ghost" size="icon" className="rounded-full relative">
@@ -105,17 +107,17 @@ export default function Navbar() {
                                 <DropdownMenuTrigger asChild>
                                     <Button variant="ghost" className="relative h-9 w-9 rounded-full ml-2">
                                         <Avatar className="h-9 w-9 border">
-                                            <AvatarImage src={user.role === "guest" ? undefined : undefined} alt={user.username} />
-                                            <AvatarFallback>{(user.username || "U").charAt(0).toUpperCase()}</AvatarFallback>
+                                            <AvatarImage src={typedUser.role === "guest" ? undefined : undefined} alt={typedUser.username} />
+                                            <AvatarFallback>{(typedUser.username || "U").charAt(0).toUpperCase()}</AvatarFallback>
                                         </Avatar>
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent className="w-56" align="end" forceMount>
                                     <DropdownMenuLabel className="font-normal">
                                         <div className="flex flex-col space-y-1">
-                                            <p className="text-sm font-medium leading-none">{user.username || "User"}</p>
+                                            <p className="text-sm font-medium leading-none">{typedUser.username || "User"}</p>
                                             <p className="text-xs leading-none text-muted-foreground">
-                                                {user.role}
+                                                {typedUser.role}
                                             </p>
                                         </div>
                                     </DropdownMenuLabel>
@@ -123,7 +125,7 @@ export default function Navbar() {
                                     <DropdownMenuItem asChild>
                                         <Link href="/profile">
                                             <div className="flex items-center cursor-pointer w-full">
-                                                <User className="mr-2 h-4 w-4" />
+                                                <UserIcon className="mr-2 h-4 w-4" />
                                                 <span>Profile</span>
                                             </div>
                                         </Link>

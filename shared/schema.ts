@@ -66,7 +66,10 @@ export const posts = pgTable("posts", {
   attachments: jsonb("attachments").default([]), // Array of { type, url, name }
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("posts_company_id_idx").on(table.companyId),
+  index("posts_category_idx").on(table.category)
+]);
 
 // === COMMENTS ===
 export const comments = pgTable("comments", {
@@ -76,7 +79,9 @@ export const comments = pgTable("comments", {
   authorId: text("author_id").notNull(), // FK to users.id
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("comments_post_id_idx").on(table.postId)
+]);
 
 // === REACTIONS ===
 export const reactions = pgTable("reactions", {
@@ -177,7 +182,10 @@ export const chatRequests = pgTable("chat_requests", {
   createdAt: timestamp("created_at").defaultNow(),
   expiresAt: timestamp("expires_at").notNull(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("chat_requests_recipient_id_idx").on(table.recipientId),
+  index("chat_requests_requester_id_idx").on(table.requesterId)
+]);
 
 // Keep backward compatibility alias
 export const linkedinExchanges = chatRequests;
@@ -189,7 +197,9 @@ export const privateMessages = pgTable("private_messages", {
   senderId: text("sender_id").notNull(), // FK to users.id
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("messages_chat_request_id_idx").on(table.chatRequestId)
+]);
 
 // === USER BLOCKS ===
 export const blocks = pgTable("blocks", {
