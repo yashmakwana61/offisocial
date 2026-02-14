@@ -2,12 +2,13 @@ import { useInfiniteQuery, useMutation, useQueryClient, useQuery } from "@tansta
 import { api, buildUrl } from "@shared/routes";
 import { type CreatePostInput, type CreateCommentInput } from "@shared/schema";
 
-export function usePosts(category?: string, enabled = true) {
+export function usePosts(category?: string, enabled = true, searchQuery?: string) {
   return useInfiniteQuery({
-    queryKey: [api.posts.list.path, category],
+    queryKey: [api.posts.list.path, category, searchQuery],
     queryFn: async ({ pageParam = 0 }) => {
       const url = new URL(window.location.origin + api.posts.list.path);
       if (category) url.searchParams.set("category", category);
+      if (searchQuery) url.searchParams.set("search", searchQuery);
       url.searchParams.set("limit", "20");
       url.searchParams.set("offset", pageParam.toString());
 
@@ -24,12 +25,13 @@ export function usePosts(category?: string, enabled = true) {
   });
 }
 
-export function usePublicPosts(category?: string, enabled = true) {
+export function usePublicPosts(category?: string, enabled = true, searchQuery?: string) {
   return useInfiniteQuery({
-    queryKey: [api.posts.publicList.path, category],
+    queryKey: [api.posts.publicList.path, category, searchQuery],
     queryFn: async ({ pageParam = 0 }) => {
       const url = new URL(window.location.origin + api.posts.publicList.path);
       if (category) url.searchParams.set("category", category);
+      if (searchQuery) url.searchParams.set("search", searchQuery);
       url.searchParams.set("limit", "20");
       url.searchParams.set("offset", pageParam.toString());
 
@@ -126,16 +128,108 @@ export function useToggleReaction() {
         body: JSON.stringify(data),
         credentials: "include",
       });
-
+      if (res.status === 401) {
+        window.location.href = "/api/auth/linkedin";
+        throw new Error("Unauthorized");
+      }
       if (!res.ok) throw new Error("Failed to toggle reaction");
       return res.json();
     },
-    onSuccess: (_, variables) => {
+    onMutate: async (variables) => {
+      // Cancel any outgoing refetches (so they don't overwrite our optimistic update)
+      await queryClient.cancelQueries({ queryKey: [api.posts.list.path] });
+      await queryClient.cancelQueries({ queryKey: [api.posts.publicList.path] });
+      if (variables.targetType === 'post') {
+        await queryClient.cancelQueries({ queryKey: [api.posts.get.path, variables.targetId] });
+      }
+
+      // Snapshot the previous values for all matching queries
+      console.log(`[DEBUG] Mutation started for ${variables.targetType}:${variables.targetId}, type=${variables.type}`);
+      const previousQueries = queryClient.getQueriesData({ queryKey: [api.posts.list.path] });
+      const previousPublicQueries = queryClient.getQueriesData({ queryKey: [api.posts.publicList.path] });
+      console.log(`[DEBUG] Found ${previousQueries.length} member queries and ${previousPublicQueries.length} public queries in cache`);
+      const previousPostDetail = variables.targetType === 'post'
+        ? queryClient.getQueryData([api.posts.get.path, variables.targetId])
+        : null;
+
+      // Helper function to optimistic update a post object
+      const updatePost = (post: any) => {
+        if (!post) return post;
+        if (post.id !== variables.targetId) {
+          // console.log(`[DEBUG] ID mismatch: post.id=${post.id} (${typeof post.id}) != targetId=${variables.targetId} (${typeof variables.targetId})`);
+          return post;
+        }
+        console.log(`[DEBUG] Found target post! Current supportCount=${post.reactionCounts?.support}`);
+
+        const newReactionCounts = {
+          support: post.reactionCounts?.support ?? 0,
+          helpful: post.reactionCounts?.helpful ?? 0,
+          ...post.reactionCounts
+        };
+        let newUserReaction = post.userReaction;
+
+        if (post.userReaction === variables.type) {
+          // Toggle off
+          newReactionCounts[variables.type] = Math.max(0, (newReactionCounts[variables.type] || 0) - 1);
+          newUserReaction = null;
+        } else {
+          // Change type or add new
+          if (post.userReaction) {
+            newReactionCounts[post.userReaction] = Math.max(0, (newReactionCounts[post.userReaction] || 0) - 1);
+          }
+          newReactionCounts[variables.type] = (newReactionCounts[variables.type] || 0) + 1;
+          newUserReaction = variables.type;
+        }
+
+        return {
+          ...post,
+          reactionCounts: newReactionCounts,
+          userReaction: newUserReaction,
+        };
+      };
+
+      // Optimistically update Infinite Queries
+      const updateInfiniteData = (oldData: any) => {
+        if (!oldData || !oldData.pages) return oldData;
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page: any[]) => page.map(updatePost)),
+        };
+      };
+
+      queryClient.setQueriesData({ queryKey: [api.posts.list.path] }, updateInfiniteData);
+      queryClient.setQueriesData({ queryKey: [api.posts.publicList.path] }, updateInfiniteData);
+
+      // Optimistically update Single Post Query
+      if (variables.targetType === 'post') {
+        queryClient.setQueryData([api.posts.get.path, variables.targetId], (old: any) => {
+          if (!old) return old;
+          return updatePost(old);
+        });
+      }
+
+      return { previousQueries, previousPublicQueries, previousPostDetail };
+    },
+    onError: (err, variables, context: any) => {
+      // Rollback on error
+      if (context) {
+        context.previousQueries?.forEach(([queryKey, oldData]: [any, any]) => {
+          queryClient.setQueryData(queryKey, oldData);
+        });
+        context.previousPublicQueries?.forEach(([queryKey, oldData]: [any, any]) => {
+          queryClient.setQueryData(queryKey, oldData);
+        });
+        if (variables.targetType === 'post') {
+          queryClient.setQueryData([api.posts.get.path, variables.targetId], context.previousPostDetail);
+        }
+      }
+    },
+    onSettled: (data, error, variables) => {
+      // Refresh to ensure server sync
       queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
       if (variables.targetType === 'post') {
         queryClient.invalidateQueries({ queryKey: [api.posts.get.path, variables.targetId] });
-      } else {
-        queryClient.invalidateQueries({ queryKey: [api.posts.get.path] });
       }
     },
   });
@@ -275,6 +369,29 @@ export function useBlockUser() {
         throw new Error("Failed to block user");
       }
       return api.safety.block.responses[201].parse(await res.json());
+    },
+  });
+}
+
+export function useRemindProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (chatRequestId: number) => {
+      const res = await fetch(`/api/exchange/${chatRequestId}/remind-profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to send profile reminder");
+      }
+      return await res.json();
+    },
+    onSuccess: (_, chatRequestId) => {
+      // Invalidate messages list to show the new automated message
+      queryClient.invalidateQueries({ queryKey: [api.messages.list.path, chatRequestId] });
+      queryClient.invalidateQueries({ queryKey: [api.exchange.list.path] });
     },
   });
 }

@@ -1,28 +1,23 @@
 import { formatDistanceToNow } from "date-fns";
 import { Check, X, Ban, MessageCircle, Lock, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useRespondToChatRequest, useRevealIdentity } from "@/hooks/use-posts";
+import { Link } from "wouter";
+import { useRespondToChatRequest, useRevealIdentity, useRemindProfile } from "@/hooks/use-posts";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { Link } from "wouter";
+
+import { ChatRequest } from "@shared/schema";
 
 interface ChatRequestItemProps {
-    request: {
-        id: number;
-        requesterId: string;
-        recipientId: string;
-        introMessage: string;
-        status: 'pending' | 'accepted' | 'rejected' | 'ignored';
-        createdAt: string;
-        senderIdentityRevealed: boolean;
-        receiverIdentityRevealed: boolean;
+    request: ChatRequest & {
+        otherUserRole?: string | null;
         otherUserId: string;
-        otherUserRole?: string;
         otherUserProfile?: {
-            firstName: string;
-            lastName: string;
-            headline: string;
+            firstName: string | null;
+            lastName: string | null;
+            headline?: string | null;
             companyName: string;
+            linkedinUrlEncrypted?: string | null;
         };
     };
     currentUserId: string;
@@ -31,6 +26,7 @@ interface ChatRequestItemProps {
 export function ChatRequestItem({ request, currentUserId }: ChatRequestItemProps) {
     const respond = useRespondToChatRequest();
     const reveal = useRevealIdentity();
+    const remindProfile = useRemindProfile();
     const { toast } = useToast();
 
     const isIncoming = request.recipientId === currentUserId;
@@ -57,8 +53,8 @@ export function ChatRequestItem({ request, currentUserId }: ChatRequestItemProps
         });
     };
 
-    const hasRevealedCombined = request.senderIdentityRevealed && request.receiverIdentityRevealed;
-    const myRevealStatus = isIncoming ? request.receiverIdentityRevealed : request.senderIdentityRevealed;
+    const hasRevealedCombined = !!(request.senderIdentityRevealed && request.receiverIdentityRevealed);
+    const myRevealStatus = isIncoming ? !!request.receiverIdentityRevealed : !!request.senderIdentityRevealed;
 
     return (
         <div className="bg-card border border-border/50 rounded-xl p-5 shadow-sm space-y-4">
@@ -76,15 +72,16 @@ export function ChatRequestItem({ request, currentUserId }: ChatRequestItemProps
                         <p className="text-sm text-muted-foreground">{request.otherUserProfile.headline} at {request.otherUserProfile.companyName}</p>
                     )}
                     <p className="text-xs text-muted-foreground">
-                        {isIncoming ? "Received" : "Sent"} {formatDistanceToNow(new Date(request.createdAt), { addSuffix: true })}
+                        {isIncoming ? "Received" : "Sent"} {request.createdAt ? formatDistanceToNow(new Date(request.createdAt), { addSuffix: true }) : "Unknown time"}
                     </p>
                 </div>
                 <div className={`px-2 py-1 rounded text-xs font-medium capitalize ${request.status === 'accepted' ? 'bg-green-50 text-green-700' :
-                        request.status === 'rejected' ? 'bg-red-50 text-red-700' :
-                            request.status === 'ignored' ? 'bg-gray-100 text-gray-600' :
+                    request.status === 'rejected' ? 'bg-red-50 text-red-700' :
+                        request.status === 'ignored' ? 'bg-gray-100 text-gray-600' :
+                            request.status === 'expired' ? 'bg-orange-50 text-orange-700' :
                                 'bg-blue-50 text-blue-700'
                     }`}>
-                    {request.status}
+                    {request.status || 'Unknown'}
                 </div>
             </div>
 
@@ -115,13 +112,36 @@ export function ChatRequestItem({ request, currentUserId }: ChatRequestItemProps
                                 Open Chat
                             </Button>
                         </Link>
+                        {hasRevealedCombined && (
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-2"
+                                onClick={() => {
+                                    if (request.otherUserProfile?.linkedinUrlEncrypted) {
+                                        window.open(request.otherUserProfile.linkedinUrlEncrypted, '_blank');
+                                    } else {
+                                        remindProfile.mutate(request.id, {
+                                            onSuccess: () => {
+                                                toast({ title: "Reminder Sent", description: "We've sent a message reminding them to update their LinkedIn profile." });
+                                            },
+                                            onError: () => {
+                                                toast({ title: "Error", description: "Failed to send reminder.", variant: "destructive" });
+                                            }
+                                        });
+                                    }
+                                }}
+                            >
+                                <Unlock className="w-3 h-3" />
+                                View Profile
+                            </Button>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
                         {hasRevealedCombined ? (
                             <div className="flex items-center gap-2 text-sm text-green-600">
-                                <Unlock className="w-4 h-4" />
-                                <span>Identities Revealed</span>
+                                <span className="text-xs">Identities Revealed</span>
                             </div>
                         ) : (
                             <div className="flex items-center gap-3">

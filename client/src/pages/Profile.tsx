@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, LogOut, Shield, UserCircle, EyeOff, Lock, Trash2, Loader2, Link2, Linkedin } from "lucide-react";
-import { useLocation } from "wouter";
+import { LogOut, Shield, UserCircle, EyeOff, Lock, Trash2, Loader2, Link2, Linkedin } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -20,7 +19,6 @@ export default function Profile() {
   const deleteAccount = useDeleteAccount();
   const { data: exchangeRequests } = useExchangeRequests();
   const respondToExchange = useRespondToExchange();
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
 
   const handleRespondToExchange = (id: number, status: 'accepted' | 'rejected') => {
@@ -107,22 +105,17 @@ export default function Profile() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24 md:pb-20">
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40">
-        <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="-ml-2" onClick={() => setLocation("/")}>
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <h1 className="font-display font-bold text-xl sm:text-2xl tracking-tight">Your Profile</h1>
-        </div>
-      </header>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Your Profile</h1>
+      </div>
 
-      <main className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 pt-6 space-y-6">
+      <div className="space-y-6">
         {/* Profile Card */}
-        <Card className="p-5 sm:p-6 overflow-hidden relative border-primary/10 bg-primary/5">
+        <Card className="p-6 relative border-primary/10 bg-primary/5">
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-              <UserCircle className="w-7 h-7 sm:w-8 sm:h-8 text-primary" />
+            <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+              <UserCircle className="w-8 h-8 text-primary" />
             </div>
             <div className="flex-1 w-full">
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-1">
@@ -141,7 +134,7 @@ export default function Profile() {
                   </div>
                 ) : (
                   <>
-                    <h2 className="font-semibold text-lg sm:text-xl">{newRole || profile?.role || "Team Member"}</h2>
+                    <h2 className="font-semibold text-xl">{newRole || profile?.role || "Team Member"}</h2>
                     <Button variant="ghost" size="sm" className="h-6 px-2 self-start sm:self-auto" onClick={() => setIsEditingRole(true)}>
                       <span className="text-xs text-muted-foreground hover:text-primary">Edit</span>
                     </Button>
@@ -291,9 +284,11 @@ export default function Profile() {
                           variant="ghost"
                           className="h-8 text-xs gap-1.5"
                           onClick={() => {
-                            // If it's accepted, the backend should provide the link if we fetch details?
-                            // For now, let's assume we show a toast or something if we don't have the URL yet.
-                            toast({ title: "Connecting...", description: "User has shared their LinkedIn profile." });
+                            if (req.otherUserProfile?.linkedinUrlEncrypted) {
+                              window.open(req.otherUserProfile.linkedinUrlEncrypted, '_blank');
+                            } else {
+                              toast({ title: "Profile not available", description: "This user hasn't shared their LinkedIn profile yet or identities are not mutually revealed." });
+                            }
                           }}
                         >
                           <Linkedin className="w-3.5 h-3.5" />
@@ -362,7 +357,7 @@ export default function Profile() {
             </div>
           </div>
         </Card>
-      </main>
+      </div>
     </div>
   );
 }

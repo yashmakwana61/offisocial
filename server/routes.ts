@@ -164,13 +164,17 @@ export async function registerRoutes(
     const category = req.query.category as string | undefined;
     const limit = req.query.limit ? Number(req.query.limit) : 20;
     const offset = req.query.offset ? Number(req.query.offset) : 0;
-    const posts = await storage.getPublicPosts(category, limit, offset);
+    const searchQuery = req.query.search as string | undefined;
+    const userId = (req as any).user?.id;
+    console.log(`[DEBUG] GET /api/posts/public: category=${category}, userId=${userId}, search=${searchQuery}`);
+    const posts = await storage.getPublicPosts(category, limit, offset, userId, searchQuery);
     res.json(posts);
   });
 
   app.get("/api/posts/public/:id", async (req: Request, res: Response) => {
     const postId = Number(req.params.id);
-    const post = await storage.getPublicPost(postId);
+    const userId = (req as any).user?.id;
+    const post = await storage.getPublicPost(postId, userId);
     if (!post) {
       return res.status(404).json({ message: "Post not found or restricted" });
     }
@@ -192,7 +196,9 @@ export async function registerRoutes(
 
     const limit = req.query.limit ? Number(req.query.limit) : 20;
     const offset = req.query.offset ? Number(req.query.offset) : 0;
-    const posts = await storage.getCompanyPosts(profile.companyId, userId, req.query.category as string, limit, offset);
+    const searchQuery = req.query.search as string | undefined;
+    const posts = await storage.getCompanyPosts(profile.companyId, userId, req.query.category as string, limit, offset, searchQuery);
+    console.log(`[DEBUG] GET /api/posts: companyId=${profile.companyId}, userId=${userId}, count=${posts.length}, search=${searchQuery}`);
     res.json(posts);
   });
 
@@ -451,6 +457,34 @@ export async function registerRoutes(
         console.error("Send message error:", err);
         res.status(500).json({ message: "Internal server error" });
       }
+    }
+  });
+
+  app.post("/api/exchange/:id/remind-profile", isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const chatRequestId = Number(req.params.id);
+    try {
+      // 1. Get the chat request to verify participation
+      const request = await storage.getChatRequest(chatRequestId);
+      if (!request) {
+        return res.status(404).json({ message: "Chat request not found" });
+      }
+
+      if (request.requesterId !== userId && request.recipientId !== userId) {
+        return res.status(403).json({ message: "Not authorized to send reminders in this chat" });
+      }
+
+      // 2. Send the reminder message
+      // We send it *from* the current user so it appears in their chat history
+      const messageContent = "Hi! I wanted to check out your LinkedIn profile, but it seems you haven't added the link to your profile yet. Could you please update it?";
+
+      const message = await storage.sendPrivateMessage(chatRequestId, userId, messageContent);
+      res.status(201).json({ success: true, message: "Reminder sent successfully" });
+    } catch (err) {
+      console.error("Send profile reminder error:", err);
+      // If the error is due to chat not accepted, sendPrivateMessage throws.
+      // We can catch that or just 500.
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

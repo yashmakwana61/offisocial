@@ -25,7 +25,13 @@ export interface IStorage {
   upsertUser(user: UpsertUser): Promise<User>;
   getProfile(userId: string): Promise<Profile | undefined>;
   getProfileByHashedId(hashedId: string): Promise<Profile | undefined>;
-  getProfileWithDetails(userId: string): Promise<(Profile & { companyName: string; maskedEmail: string }) | undefined>;
+  getProfileWithDetails(userId: string): Promise<(Profile & {
+    companyName: string;
+    maskedEmail: string;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl: string | null;
+  }) | undefined>;
   createProfile(userId: string, role: string, companyName: string, hashedLinkedinId?: string, status?: Profile["accountStatus"]): Promise<Profile>;
   updateProfileVerification(userId: string, updates: Partial<Profile>): Promise<Profile>;
   updateRole(userId: string, role: string): Promise<Profile>;
@@ -38,13 +44,14 @@ export interface IStorage {
   findOrCreateCompany(name: string): Promise<Company>;
 
   // Posts
-  getCompanyPosts(companyId: number, userId: string, category?: string, limit?: number, offset?: number): Promise<(Post & { commentCount: number; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
-  getPublicPosts(category?: string, limit?: number, offset?: number): Promise<(Omit<Post, 'companyId' | 'authorId'> & { commentCount: number; reactionCounts: { support: number; helpful: number }; authorRole: string | null })[]>;
+  getCompanyPosts(companyId: number, userId: string, category?: string, limit?: number, offset?: number, searchQuery?: string): Promise<(Post & { commentCount: number; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
+  getPublicPosts(category?: string, limit?: number, offset?: number, userId?: string, searchQuery?: string): Promise<(Omit<Post, 'companyId' | 'authorId'> & { commentCount: number; reactionCounts: { support: number; helpful: number }; authorRole: string | null; userReaction: 'support' | 'helpful' | null })[]>;
   getPost(id: number, userId: string): Promise<(Post & { reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null }) | undefined>;
-  getPublicPost(id: number): Promise<(Omit<Post, 'companyId' | 'authorId'> & {
-    comments: (Omit<Comment, 'authorId'> & { authorRole: string | null; reactionCounts: { support: number; helpful: number } })[];
+  getPublicPost(id: number, userId?: string): Promise<(Omit<Post, 'companyId' | 'authorId'> & {
+    comments: (Omit<Comment, 'authorId'> & { authorRole: string | null; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[];
     reactionCounts: { support: number; helpful: number };
     authorRole: string | null;
+    userReaction: 'support' | 'helpful' | null;
   }) | undefined>;
   createPost(userId: string, companyId: number, post: CreatePostInput & { attachments?: any[] }): Promise<Post>;
 
@@ -65,7 +72,16 @@ export interface IStorage {
   getChatRequest(id: number): Promise<ChatRequest | undefined>;
   respondToChatRequest(id: number, status: 'accepted' | 'rejected' | 'ignored'): Promise<ChatRequest>;
   revealIdentity(chatRequestId: number, userId: string, agree: boolean): Promise<{ mutualReveal: boolean; chatRequest: ChatRequest }>;
-  getChatRequests(userId: string): Promise<(ChatRequest & { otherUserRole: string | null; otherUserId: string; otherUserProfile?: Profile & { companyName: string } })[]>;
+  getChatRequests(userId: string): Promise<(ChatRequest & {
+    otherUserRole?: string | null;
+    otherUserId: string;
+    otherUserProfile?: Profile & {
+      companyName: string;
+      firstName: string | null;
+      lastName: string | null;
+      profileImageUrl: string | null;
+    }
+  })[]>;
 
   // Backward compatibility
   createExchangeRequest(requesterId: string, recipientId: string): Promise<LinkedinExchange>;
@@ -128,7 +144,13 @@ export class DatabaseStorage implements IStorage {
     return profile;
   }
 
-  async getProfileWithDetails(userId: string): Promise<(Profile & { companyName: string; maskedEmail: string }) | undefined> {
+  async getProfileWithDetails(userId: string): Promise<(Profile & {
+    companyName: string;
+    maskedEmail: string;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl: string | null;
+  }) | undefined> {
     const profile = await this.getProfile(userId);
     if (!profile) return undefined;
 
@@ -137,6 +159,9 @@ export class DatabaseStorage implements IStorage {
 
     return {
       ...profile,
+      firstName: user?.firstName || null,
+      lastName: user?.lastName || null,
+      profileImageUrl: user?.profileImageUrl || null,
       companyName: company?.name || "Unknown Company",
       maskedEmail: maskEmail(user?.email || null),
     };
@@ -313,10 +338,17 @@ export class DatabaseStorage implements IStorage {
     return report;
   }
 
-  async getCompanyPosts(companyId: number, userId: string, category?: string, limit = 20, offset = 0): Promise<any[]> {
+  async getCompanyPosts(companyId: number, userId: string, category?: string, limit = 20, offset = 0, searchQuery?: string): Promise<any[]> {
     const conditions = [eq(posts.companyId, companyId)];
     if (category) {
       conditions.push(eq(posts.category, category as any));
+    }
+
+    if (searchQuery) {
+      const searchTerms = `%${searchQuery.toLowerCase()}%`;
+      conditions.push(
+        sql`(${posts.content} ILIKE ${searchTerms} OR ${posts.category} ILIKE ${searchTerms})`
+      );
     }
 
     const postsList = await db.select({
@@ -343,7 +375,7 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
-  async getPublicPosts(category?: string, limit = 20, offset = 0): Promise<any[]> {
+  async getPublicPosts(category?: string, limit = 20, offset = 0, userId?: string, searchQuery?: string): Promise<any[]> {
     const safeCategories = [
       "Mental Stress / Burnout",
       "Toxic Work Culture",
@@ -359,12 +391,20 @@ export class DatabaseStorage implements IStorage {
       conditions.push(inArray(posts.category, safeCategories as any[]));
     }
 
+    if (searchQuery) {
+      const searchTerms = `%${searchQuery.toLowerCase()}%`;
+      conditions.push(
+        sql`(${posts.content} ILIKE ${searchTerms} OR ${posts.category} ILIKE ${searchTerms})`
+      );
+    }
+
     const postsList = await db.select({
       post: posts,
       authorRole: profiles.role,
       commentCount: sql<number>`(SELECT count(*) FROM ${comments} WHERE ${comments.postId} = ${posts.id})`,
       supportCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.type} = 'support')`,
       helpfulCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.type} = 'helpful')`,
+      userReaction: userId ? sql<string | null>`(SELECT ${reactions.type} FROM ${reactions} WHERE ${reactions.targetId} = ${posts.id} AND ${reactions.targetType} = 'post' AND ${reactions.userId} = ${userId} LIMIT 1)` : sql<string | null>`NULL`,
     })
       .from(posts)
       .leftJoin(profiles, eq(posts.authorId, profiles.userId))
@@ -395,7 +435,8 @@ export class DatabaseStorage implements IStorage {
           support: Number(item.supportCount),
           helpful: Number(item.helpfulCount)
         },
-        authorRole: item.authorRole || "Verified Employee"
+        authorRole: item.authorRole || "Verified Employee",
+        userReaction: item.userReaction || null
       };
     });
   }
@@ -414,7 +455,7 @@ export class DatabaseStorage implements IStorage {
   }
 
 
-  async getPublicPost(id: number): Promise<any | undefined> {
+  async getPublicPost(id: number, userId?: string): Promise<any | undefined> {
     const [post] = await db.select().from(posts).where(eq(posts.id, id));
     if (!post) return undefined;
 
@@ -446,7 +487,7 @@ export class DatabaseStorage implements IStorage {
 
     const enrichedComments = await Promise.all(commentsList.map(async (comment: Comment) => {
       const [commentProfile] = await db.select().from(profiles).where(eq(profiles.userId, comment.authorId));
-      const commentReactionStats = await this.getReactionStats('comment', comment.id, 'GUEST');
+      const commentReactionStats = await this.getReactionStats('comment', comment.id, userId || 'GUEST');
 
       // Sanitize comment
       let sanitizedCommentContent = comment.content;
@@ -460,7 +501,8 @@ export class DatabaseStorage implements IStorage {
         content: sanitizedCommentContent,
         createdAt: comment.createdAt,
         authorRole: commentProfile?.role || "Verified Employee",
-        reactionCounts: commentReactionStats.counts
+        reactionCounts: commentReactionStats.counts,
+        userReaction: commentReactionStats.userReaction
       };
     }));
 
@@ -472,6 +514,7 @@ export class DatabaseStorage implements IStorage {
       updatedAt: post.updatedAt,
       authorRole: profile?.role || "Verified Employee",
       reactionCounts: reactionStats.counts,
+      userReaction: reactionStats.userReaction,
       comments: enrichedComments
     };
   }
@@ -514,6 +557,23 @@ export class DatabaseStorage implements IStorage {
   }
 
   async toggleReaction(userId: string, targetType: 'post' | 'comment', targetId: number, type: 'support' | 'helpful'): Promise<{ action: 'added' | 'removed' }> {
+    console.log(`[STORAGE] toggleReaction: user=${userId}, target=${targetType}:${targetId}, type=${type}`);
+
+    // Check if target exists
+    if (targetType === 'post') {
+      const [post] = await db.select().from(posts).where(eq(posts.id, targetId));
+      if (!post) {
+        console.error(`[STORAGE] Reaction target not found: ${targetType}:${targetId}`);
+        throw new Error("Post not found");
+      }
+    } else {
+      const [comment] = await db.select().from(comments).where(eq(comments.id, targetId));
+      if (!comment) {
+        console.error(`[STORAGE] Reaction target not found: ${targetType}:${targetId}`);
+        throw new Error("Comment not found");
+      }
+    }
+
     const [existing] = await db.select().from(reactions).where(and(
       eq(reactions.userId, userId),
       eq(reactions.targetType, targetType),
@@ -522,21 +582,27 @@ export class DatabaseStorage implements IStorage {
 
     if (existing) {
       if (existing.type === type) {
+        console.log(`[STORAGE] Removing existing ${type} reaction for ${userId} on ${targetType}:${targetId}`);
         // Toggle off
         await db.delete(reactions).where(eq(reactions.id, existing.id));
         return { action: 'removed' };
       } else {
+        console.log(`[STORAGE] Changing reaction type from ${existing.type} to ${type} for ${userId} on ${targetType}:${targetId}`);
         // Change type
         await db.update(reactions).set({ type }).where(eq(reactions.id, existing.id));
         return { action: 'added' };
       }
     } else {
+      console.log(`[STORAGE] Adding new ${type} reaction for ${userId} on ${targetType}:${targetId}`);
       // Add new
       await db.insert(reactions).values({
         userId,
         targetType,
         targetId,
         type
+      }).onConflictDoUpdate({
+        target: [reactions.userId, reactions.targetType, reactions.targetId],
+        set: { type }
       });
       return { action: 'added' };
     }
@@ -622,7 +688,16 @@ export class DatabaseStorage implements IStorage {
     return { mutualReveal, chatRequest: updated };
   }
 
-  async getChatRequests(userId: string): Promise<any[]> {
+  async getChatRequests(userId: string): Promise<(ChatRequest & {
+    otherUserRole?: string | null;
+    otherUserId: string;
+    otherUserProfile?: Profile & {
+      companyName: string;
+      firstName: string | null;
+      lastName: string | null;
+      profileImageUrl: string | null;
+    }
+  })[]> {
     // Fetch requests where user is either requester or recipient
     const requests = await db.select().from(chatRequests).where(
       sql`${chatRequests.requesterId} = ${userId} OR ${chatRequests.recipientId} = ${userId}`
@@ -640,6 +715,9 @@ export class DatabaseStorage implements IStorage {
         const otherUser = await this.getUser(otherUserId);
         otherUserProfile = {
           ...otherProfile,
+          firstName: otherUser?.firstName || null,
+          lastName: otherUser?.lastName || null,
+          profileImageUrl: otherUser?.profileImageUrl || null,
           companyName: company?.name || "Unknown Company",
         };
       }

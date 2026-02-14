@@ -29,7 +29,13 @@ export const api = {
       method: 'GET' as const,
       path: '/api/profiles/me',
       responses: {
-        200: z.custom<typeof profiles.$inferSelect & { companyName: string; maskedEmail: string }>().nullable(),
+        200: z.custom<typeof profiles.$inferSelect & {
+          companyName: string;
+          maskedEmail: string;
+          firstName: string | null;
+          lastName: string | null;
+          profileImageUrl: string | null;
+        }>().nullable(),
         401: errorSchemas.unauthorized,
       },
     },
@@ -118,6 +124,7 @@ export const api = {
           commentCount: number;
           reactionCounts: { support: number; helpful: number };
           authorRole: string | null;
+          userReaction: 'support' | 'helpful' | null;
         }>()),
       },
     },
@@ -129,6 +136,7 @@ export const api = {
           comments: (Omit<typeof comments.$inferSelect, 'authorId'> & { authorRole: string | null; reactionCounts: { support: number; helpful: number } })[];
           reactionCounts: { support: number; helpful: number };
           authorRole: string | null;
+          userReaction: 'support' | 'helpful' | null;
         }>(),
         404: errorSchemas.notFound,
       },
@@ -254,7 +262,12 @@ export const api = {
         200: z.object({
           success: z.boolean(),
           mutualReveal: z.boolean(),
-          otherUserProfile: z.custom<typeof profiles.$inferSelect & { companyName: string }>().optional(),
+          otherUserProfile: z.custom<typeof profiles.$inferSelect & {
+            companyName: string;
+            firstName: string | null;
+            lastName: string | null;
+            profileImageUrl: string | null;
+          }>().optional(),
         }),
       }
     },
@@ -265,7 +278,12 @@ export const api = {
         200: z.array(z.custom<typeof linkedinExchanges.$inferSelect & {
           otherUserRole: string | null;
           otherUserId: string;
-          otherUserProfile?: typeof profiles.$inferSelect & { companyName: string };
+          otherUserProfile?: typeof profiles.$inferSelect & {
+            companyName: string;
+            firstName: string | null;
+            lastName: string | null;
+            profileImageUrl: string | null;
+          };
         }>()),
       }
     }

@@ -49,7 +49,7 @@ export default function PostDetail() {
 
   if (isLoading) {
     return (
-      <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 pt-8 space-y-8">
+      <div className="space-y-8">
         <Skeleton className="h-10 w-24 rounded-lg" />
         <Skeleton className="h-64 w-full rounded-2xl" />
         <div className="space-y-4">
@@ -63,50 +63,43 @@ export default function PostDetail() {
   if (!post) return <div className="p-8 text-center text-muted-foreground">Post not found or restricted.</div>;
 
   return (
-    <div className="min-h-screen bg-background pb-24 md:pb-20">
-      <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/50">
-        <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center">
-          <Link href="/">
-            <Button variant="ghost" className="gap-2 pl-0 hover:bg-transparent hover:text-primary text-sm sm:text-base">
-              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
-              <span className="hidden sm:inline">Back to Feed</span>
-              <span className="sm:hidden">Back</span>
-            </Button>
-          </Link>
-        </div>
-      </header>
+    <div className="space-y-6">
+      <Link href="/">
+        <Button variant="ghost" className="gap-2 pl-0 hover:bg-transparent hover:text-primary text-sm sm:text-base -ml-2">
+          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+          <span>Back to Feed</span>
+        </Button>
+      </Link>
 
-      <main className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-6 py-6">
-        <PostItem post={post} fullView />
+      <PostItem post={post} fullView />
 
-        {/* Comments Section */}
-        <div className="mt-8 sm:mt-10 space-y-6 sm:space-y-8">
-          <h3 className="text-lg sm:text-xl font-bold font-display flex items-center gap-2">
-            <MessageCircle className="w-5 h-5" />
-            Discussion ({post.comments?.length || 0})
-          </h3>
+      {/* Comments Section */}
+      <div className="mt-8 space-y-6">
+        <h3 className="text-xl font-bold font-display flex items-center gap-2">
+          <MessageCircle className="w-5 h-5" />
+          Discussion ({post.comments?.length || 0})
+        </h3>
 
-          <form onSubmit={handleComment} className="flex flex-col gap-3">
-            <Textarea
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder={user ? "Add to the discussion..." : "Sign in to join the discussion..."}
-              className="min-h-[100px] sm:min-h-[120px] rounded-xl border resize-none focus:ring-primary/20 bg-background text-sm sm:text-base"
-              readOnly={!user}
-              onClick={() => { if (!user) window.location.href = "/api/auth/linkedin"; }}
-            />
-            <Button
-              type="submit"
-              className="self-end px-5 sm:px-6 rounded-xl"
-              disabled={(!user ? false : !commentText.trim()) || createComment.isPending}
-            >
-              {user ? "Reply" : "Sign In to Reply"}
-            </Button>
-          </form>
+        <form onSubmit={handleComment} className="flex flex-col gap-3">
+          <Textarea
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder={user ? "Add to the discussion..." : "Sign in to join the discussion..."}
+            className="min-h-[100px] rounded-xl border resize-none focus:ring-primary/20 bg-background"
+            readOnly={!user}
+            onClick={() => { if (!user) window.location.href = "/api/auth/linkedin"; }}
+          />
+          <Button
+            type="submit"
+            className="self-end px-6 rounded-xl"
+            disabled={(!user ? false : !commentText.trim()) || createComment.isPending}
+          >
+            {user ? "Reply" : "Sign In to Reply"}
+          </Button>
+        </form>
 
-          <CommentList comments={post.comments || []} isLoading={false} />
-        </div>
-      </main>
+        <CommentList comments={post.comments || []} isLoading={false} />
+      </div>
     </div>
   );
 }

@@ -9,9 +9,10 @@ import { useInView } from "react-intersection-observer";
 
 interface PostListProps {
     category: string | null;
+    searchQuery?: string;
 }
 
-export default function PostList({ category }: PostListProps) {
+export default function PostList({ category, searchQuery }: PostListProps) {
     const { user, isLoading: authLoading } = useAuth();
     const { data: profile, isLoading: profileLoading } = useProfile();
     const { ref, inView } = useInView();
@@ -27,7 +28,7 @@ export default function PostList({ category }: PostListProps) {
         fetchNextPage: fetchNextMemberPage,
         hasNextPage: hasNextMemberPage,
         isFetchingNextPage: isFetchingNextMemberPage
-    } = usePosts(category || undefined, !isResolving && !!isFullMember);
+    } = usePosts(category || undefined, !isResolving && !!isFullMember, searchQuery);
 
     const {
         data: publicPages,
@@ -36,7 +37,7 @@ export default function PostList({ category }: PostListProps) {
         fetchNextPage: fetchNextPublicPage,
         hasNextPage: hasNextPublicPage,
         isFetchingNextPage: isFetchingNextPublicPage
-    } = usePublicPosts(category || undefined, !isResolving && !isFullMember);
+    } = usePublicPosts(category || undefined, !isResolving && !isFullMember, searchQuery);
 
     useEffect(() => {
         if (inView) {

@@ -103,13 +103,9 @@ export function CreatePostDialog() {
   };
 
   const onSubmit = (data: any) => {
+    // If no category is selected, default to "General Experience"
     if (!data.category) {
-      toast({
-        title: "Category required",
-        description: "Please mention a community using @ in your message.",
-        variant: "destructive",
-      });
-      return;
+      data.category = "General Experience";
     }
 
     createPost.mutate({ ...data, attachments }, {

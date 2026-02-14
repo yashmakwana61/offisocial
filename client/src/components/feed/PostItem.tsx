@@ -17,6 +17,10 @@ import { Link } from "wouter";
 import { ChatRequestModal } from "@/components/chat/ChatRequestModal";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+import { useToggleReaction } from "@/hooks/use-posts";
+import { motion, AnimatePresence } from "framer-motion";
+import { Heart } from "lucide-react";
 
 // Pre-compute category pattern regex
 const CATEGORY_REGEX = new RegExp(
@@ -36,6 +40,8 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
     const { toast } = useToast();
     const [isReportOpen, setIsReportOpen] = useState(false);
     const [isChatRequestOpen, setIsChatRequestOpen] = useState(false);
+    const [showHeartOverlay, setShowHeartOverlay] = useState(false);
+    const toggleReaction = useToggleReaction();
 
     const handleChatRequest = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -56,6 +62,28 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
         }
 
         setIsChatRequestOpen(true);
+    };
+
+    const handleDoubleTap = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!user) {
+            window.location.href = "/api/auth/linkedin";
+            return;
+        }
+
+        // Only trigger if not already supported
+        if (post.userReaction !== 'support') {
+            toggleReaction.mutate({
+                targetType: 'post',
+                targetId: post.id,
+                type: 'support'
+            });
+        }
+
+        setShowHeartOverlay(true);
+        setTimeout(() => setShowHeartOverlay(false), 1000);
     };
 
     const renderContent = (content: string) => {
@@ -114,14 +142,31 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
                 </Badge>
 
                 <div className="sm:pl-[52px]">
-                    <div className="mb-4">
+                    <div
+                        className="mb-4 relative cursor-pointer group"
+                        onDoubleClick={handleDoubleTap}
+                    >
+                        <AnimatePresence>
+                            {showHeartOverlay && (
+                                <motion.div
+                                    initial={{ scale: 0, opacity: 0 }}
+                                    animate={{ scale: [0, 1.2, 1], opacity: [0, 1, 0] }}
+                                    exit={{ scale: 0, opacity: 0 }}
+                                    transition={{ duration: 0.8, times: [0, 0.4, 1] }}
+                                    className="absolute inset-0 flex items-center justify-center pointer-events-none z-10"
+                                >
+                                    <Heart className="w-20 h-20 text-white fill-white drop-shadow-2xl opacity-90" />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
                         {fullView ? (
                             <p className="text-foreground/90 leading-relaxed text-sm sm:text-[15px] whitespace-pre-wrap font-medium">
                                 {renderContent(post.content)}
                             </p>
                         ) : (
                             <Link href={`/posts/${post.id}`}>
-                                <p className="text-foreground/90 leading-relaxed text-sm sm:text-[15px] whitespace-pre-wrap cursor-pointer hover:text-foreground">
+                                <p className="text-foreground/90 leading-relaxed text-sm sm:text-[15px] whitespace-pre-wrap hover:text-foreground">
                                     {renderContent(post.content)}
                                 </p>
                             </Link>
@@ -167,10 +212,13 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
                                     variant="ghost"
                                     size="sm"
                                     onClick={handleChatRequest}
-                                    className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5"
+                                    className={cn(
+                                        "gap-2 h-8 px-2 transition-colors",
+                                        user ? "text-muted-foreground hover:text-primary hover:bg-primary/5" : "text-muted-foreground/60 opacity-80"
+                                    )}
                                 >
-                                    <Lock className="w-4 h-4" />
-                                    <span className="text-xs font-medium">Chat</span>
+                                    <Lock className={cn("w-4 h-4", !user && "w-3 h-3 text-muted-foreground/50")} />
+                                    <span className="text-xs font-medium">{user ? "Chat" : "Sign in to Chat"}</span>
                                 </Button>
                             )}
 

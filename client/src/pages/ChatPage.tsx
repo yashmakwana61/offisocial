@@ -52,7 +52,7 @@ export default function ChatPage() {
 
     const otherUserRole = request.otherUserRole || "Anonymous User";
     const otherUserName = (request.senderIdentityRevealed && request.receiverIdentityRevealed && request.otherUserProfile)
-        ? `${request.otherUserProfile.firstName} ${request.otherUserProfile.lastName}`
+        ? `${request.otherUserProfile.firstName || ""} ${request.otherUserProfile.lastName || ""}`.trim()
         : otherUserRole;
 
     const otherUserId = request.recipientId === user.id ? request.requesterId : request.recipientId;

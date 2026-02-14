@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -85,7 +85,9 @@ export const reactions = pgTable("reactions", {
   targetId: integer("target_id").notNull(),
   userId: text("user_id").notNull(),
   type: text("type", { enum: ["support", "helpful"] }).notNull(),
-});
+}, (table) => [
+  uniqueIndex("reaction_user_target_idx").on(table.userId, table.targetType, table.targetId)
+]);
 
 // === REPORTS ===
 export const reports = pgTable("reports", {

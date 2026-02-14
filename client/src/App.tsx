@@ -7,6 +7,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useProfile } from "@/hooks/use-profiles";
 import { Loader2 } from "lucide-react";
 import { useEffect } from "react";
+import { ThemeProvider } from "next-themes";
+import Layout from "./components/layout/Layout";
 
 import NotFound from "@/pages/not-found";
 import Feed from "@/pages/Feed";
@@ -40,18 +42,34 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   const isIncomplete = !profile?.companyId || !profile?.role;
 
+  // Onboarding should not have the main layout
   if (user && (!profile || isIncomplete)) {
     return <Onboarding />;
   }
 
-  return <Component />;
+  // Wrap authenticated pages in the main Layout
+  return (
+    <Layout>
+      <Component />
+    </Layout>
+  );
 }
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Feed} />
-      <Route path="/posts/:id" component={PostDetail} />
+      <Route path="/">
+        <Layout>
+          <Feed />
+        </Layout>
+      </Route>
+      <Route path="/posts/:id">
+        {(params) => (
+          <Layout>
+            <PostDetail />
+          </Layout>
+        )}
+      </Route>
       <Route path="/profile">
         <ProtectedRoute component={Profile} />
       </Route>
@@ -64,6 +82,8 @@ function Router() {
       <Route path="/chat/:id">
         <ProtectedRoute component={ChatPage} />
       </Route>
+      {/* Route for testing layout without auth, if needed, or just public feed */}
+      {/* <Route path="/public-feed" component={Feed} /> */}
       <Route component={NotFound} />
     </Switch>
   );
@@ -72,10 +92,12 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
