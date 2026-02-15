@@ -7,6 +7,7 @@ import {
 } from "../shared/schema.js";
 import { db } from "./db.js";
 import { eq, and, desc, sql, inArray, like } from "drizzle-orm";
+import { redis } from "./redis.js";
 
 function maskEmail(email: string | null): string {
   if (!email) return "***@***.***";
@@ -245,14 +246,39 @@ export class DatabaseStorage implements IStorage {
 
   async findOrCreateCompany(name: string): Promise<Company> {
     const company = await this.getCompanyByName(name);
-    if (!company) {
-      const [newCompany] = await db.insert(companies).values({
-        name: name,
-        domain: name.toLowerCase().replace(/\s+/g, '') + '.com',
-      }).returning();
-      return newCompany;
+    if (company) return company;
+
+    const [newCompany] = await db.insert(companies).values({
+      name: name,
+      domain: name.toLowerCase().replace(/\s+/g, '') + '.com',
+    }).returning();
+    if (redis) {
+      await redis.del("companies:names");
     }
-    return company;
+    return newCompany;
+  }
+
+  async getCompanyNamesWithCache(): Promise<{ name: string }[]> {
+    const cacheKey = "companies:names";
+    if (redis) {
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) return JSON.parse(cached);
+      } catch (err) {
+        console.error("[STORAGE] Redis get company names error:", err);
+      }
+    }
+
+    const allCompanies = await db.select({ name: companies.name }).from(companies);
+
+    if (redis) {
+      try {
+        await redis.set(cacheKey, JSON.stringify(allCompanies), "EX", 600); // 10 minute cache
+      } catch (err) {
+        console.error("[STORAGE] Redis set company names error:", err);
+      }
+    }
+    return allCompanies;
   }
 
   async createProfile(userId: string, role: string, companyName: string, hashedLinkedinId?: string, status: Profile["accountStatus"] = "pending", linkedinUrl?: string, interests?: string[], persona?: any): Promise<Profile> {
@@ -394,20 +420,71 @@ export class DatabaseStorage implements IStorage {
       .limit(limit)
       .offset(offset);
 
-    return Promise.all(postsList.map(async (item: any) => ({
-      ...item.post,
-      authorRole: item.authorRole || "Verified Employee",
-      commentCount: Number(item.commentCount),
-      reactionCounts: {
-        support: Number(item.supportCount),
-        helpful: Number(item.helpfulCount)
-      },
-      userReaction: item.userReaction || null,
-      pollResults: await this.getPollResults(item.post.id, userId)
-    })));
+    const postIds = postsList.map(item => item.post.id);
+    const votes = postIds.length > 0
+      ? await db.select().from(pollVotes).where(inArray(pollVotes.postId, postIds))
+      : [];
+
+    // Fetch company names with cache for sanitization
+    const allCompanies = await this.getCompanyNamesWithCache();
+
+    return postsList.map((item: any) => {
+      let sanitizedContent = item.post.content;
+      allCompanies.forEach((c: { name: string }) => {
+        const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        sanitizedContent = sanitizedContent.replace(regex, "[REDACTED]");
+      });
+
+      const postVotes = votes.filter(v => v.postId === item.post.id);
+      const pollData = item.post.pollData as { question: string, options: string[] } | null;
+
+      let pollResults = undefined;
+      if (pollData) {
+        pollResults = {
+          options: pollData.options.map((option, index) => ({
+            label: option,
+            count: postVotes.filter(v => v.optionIndex === index).length,
+          })),
+          totalVotes: postVotes.length,
+          userVoteIndex: userId ? postVotes.find(v => v.userId === userId)?.optionIndex ?? null : null,
+        };
+      }
+
+      return {
+        id: item.post.id,
+        content: sanitizedContent,
+        category: item.post.category,
+        attachments: item.post.attachments || [],
+        createdAt: item.post.createdAt,
+        updatedAt: item.post.updatedAt,
+        authorId: item.post.authorId,
+        commentCount: Number(item.commentCount),
+        reactionCounts: {
+          support: Number(item.supportCount),
+          helpful: Number(item.helpfulCount)
+        },
+        authorRole: item.authorRole || "Verified Employee",
+        userReaction: item.userReaction || null,
+        pollResults
+      };
+    });
   }
 
   async getPublicPosts(category?: string, limit = 20, offset = 0, userId?: string, searchQuery?: string): Promise<any[]> {
+    const cacheKey = `posts:public:${category || 'all'}:${limit}:${offset}:${searchQuery || 'none'}:${userId || 'guest'}`;
+
+    if (redis) {
+      try {
+        const cached = await redis.get(cacheKey);
+        if (cached) {
+          console.log(`[STORAGE] Cache hit for ${cacheKey}`);
+          return JSON.parse(cached);
+        }
+      } catch (err) {
+        console.error("[STORAGE] Redis get error:", err);
+      }
+    }
+
     const safeCategories = [
       "Mental Stress / Burnout",
       "Toxic Work Culture",
@@ -445,15 +522,34 @@ export class DatabaseStorage implements IStorage {
       .limit(limit)
       .offset(offset);
 
-    // Fetch all companies once for sanitization (keeping this for now, though it's still a bit heavy if there are many)
-    const allCompanies = await db.select({ name: companies.name }).from(companies);
+    // Fetch company names with cache
+    const allCompanies = await this.getCompanyNamesWithCache();
+    const postIds = postsList.map(item => item.post.id);
+    const votes = postIds.length > 0
+      ? await db.select().from(pollVotes).where(inArray(pollVotes.postId, postIds))
+      : [];
 
-    return Promise.all(postsList.map(async (item: any) => {
+    const result = postsList.map((item: any) => {
       let sanitizedContent = item.post.content;
       allCompanies.forEach((c: { name: string }) => {
         const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         sanitizedContent = sanitizedContent.replace(regex, "[REDACTED]");
       });
+
+      const postVotes = votes.filter(v => v.postId === item.post.id);
+      const pollData = item.post.pollData as { question: string, options: string[] } | null;
+
+      let pollResults = undefined;
+      if (pollData) {
+        pollResults = {
+          options: pollData.options.map((option, index) => ({
+            label: option,
+            count: postVotes.filter(v => v.optionIndex === index).length,
+          })),
+          totalVotes: postVotes.length,
+          userVoteIndex: userId ? postVotes.find(v => v.userId === userId)?.optionIndex ?? null : null,
+        };
+      }
 
       return {
         id: item.post.id,
@@ -470,9 +566,20 @@ export class DatabaseStorage implements IStorage {
         },
         authorRole: item.authorRole || "Verified Employee",
         userReaction: item.userReaction || null,
-        pollResults: await this.getPollResults(item.post.id, userId)
+        pollResults
       };
-    }));
+    });
+
+    if (redis) {
+      try {
+        await redis.set(cacheKey, JSON.stringify(result), "EX", 120); // 2 minute cache
+        console.log(`[STORAGE] Cache set for ${cacheKey}`);
+      } catch (err) {
+        console.error("[STORAGE] Redis set error:", err);
+      }
+    }
+
+    return result;
   }
 
   async getPost(id: number, userId: string): Promise<any | undefined> {
@@ -506,42 +613,52 @@ export class DatabaseStorage implements IStorage {
     if (!safeCategories.includes(post.category)) return undefined;
 
     const [profile] = await db.select().from(profiles).where(eq(profiles.userId, post.authorId));
-    const reactionStats = await this.getReactionStats('post', post.id, 'GUEST');
 
-    const allCompanies = await db.select({ name: companies.name }).from(companies);
+    // Efficient count using batch stats or individual but single call
+    const reactionStats = await this.getReactionStats('post', post.id, userId || 'GUEST');
 
-    // Sanitize
+    const allCompanies = await this.getCompanyNamesWithCache();
+
+    // Sanitize post content
     let sanitizedContent = post.content;
     allCompanies.forEach((c: { name: string }) => {
       const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
       sanitizedContent = sanitizedContent.replace(regex, "[REDACTED]");
     });
 
-    // Get comments
-    const commentsList = await db.select().from(comments)
+    // Get comments with roles and reactions in FEW queries
+    const commentsList = await db.select({
+      comment: comments,
+      authorRole: profiles.role,
+      supportCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${comments.id} AND ${reactions.targetType} = 'comment' AND ${reactions.type} = 'support')`,
+      helpfulCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${comments.id} AND ${reactions.targetType} = 'comment' AND ${reactions.type} = 'helpful')`,
+      userReaction: userId ? sql<string | null>`(SELECT ${reactions.type} FROM ${reactions} WHERE ${reactions.targetId} = ${comments.id} AND ${reactions.targetType} = 'comment' AND ${reactions.userId} = ${userId} LIMIT 1)` : sql<string | null>`NULL`,
+    })
+      .from(comments)
+      .leftJoin(profiles, eq(comments.authorId, profiles.userId))
       .where(eq(comments.postId, id))
       .orderBy(desc(comments.createdAt));
 
-    const enrichedComments = await Promise.all(commentsList.map(async (comment: Comment) => {
-      const [commentProfile] = await db.select().from(profiles).where(eq(profiles.userId, comment.authorId));
-      const commentReactionStats = await this.getReactionStats('comment', comment.id, userId || 'GUEST');
-
+    const enrichedComments = commentsList.map((item: any) => {
       // Sanitize comment
-      let sanitizedCommentContent = comment.content;
+      let sanitizedCommentContent = item.comment.content;
       allCompanies.forEach((c: { name: string }) => {
         const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
         sanitizedCommentContent = sanitizedCommentContent.replace(regex, "[REDACTED]");
       });
 
       return {
-        id: comment.id,
+        id: item.comment.id,
         content: sanitizedCommentContent,
-        createdAt: comment.createdAt,
-        authorRole: commentProfile?.role || "Verified Employee",
-        reactionCounts: commentReactionStats.counts,
-        userReaction: commentReactionStats.userReaction
+        createdAt: item.comment.createdAt,
+        authorRole: item.authorRole || "Verified Employee",
+        reactionCounts: {
+          support: Number(item.supportCount),
+          helpful: Number(item.helpfulCount)
+        },
+        userReaction: item.userReaction || null
       };
-    }));
+    });
 
     return {
       id: post.id,
@@ -560,20 +677,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPostComments(postId: number, userId: string): Promise<any[]> {
-    const commentsList = await db.select().from(comments)
+    const commentsList = await db.select({
+      comment: comments,
+      supportCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${comments.id} AND ${reactions.targetType} = 'comment' AND ${reactions.type} = 'support')`,
+      helpfulCount: sql<number>`(SELECT count(*) FROM ${reactions} WHERE ${reactions.targetId} = ${comments.id} AND ${reactions.targetType} = 'comment' AND ${reactions.type} = 'helpful')`,
+      userReaction: sql<string | null>`(SELECT ${reactions.type} FROM ${reactions} WHERE ${reactions.targetId} = ${comments.id} AND ${reactions.targetType} = 'comment' AND ${reactions.userId} = ${userId} LIMIT 1)`,
+    })
+      .from(comments)
       .where(eq(comments.postId, postId))
       .orderBy(desc(comments.createdAt));
 
-    const enrichedComments = await Promise.all(commentsList.map(async (comment: Comment) => {
-      const reactionStats = await this.getReactionStats('comment', comment.id, userId);
-      return {
-        ...comment,
-        reactionCounts: reactionStats.counts,
-        userReaction: reactionStats.userReaction
-      };
+    return commentsList.map((item: any) => ({
+      ...item.comment,
+      reactionCounts: {
+        support: Number(item.supportCount),
+        helpful: Number(item.helpfulCount)
+      },
+      userReaction: item.userReaction || null
     }));
-
-    return enrichedComments;
   }
 
   async createComment(userId: string, postId: number, comment: CreateCommentInput & { parentId?: number }): Promise<Comment> {
@@ -583,6 +704,11 @@ export class DatabaseStorage implements IStorage {
       postId,
       parentId: comment.parentId || null,
     }).returning();
+
+    if (redis) {
+      await this.clearPublicPostsCache();
+    }
+
     return newComment;
   }
 
@@ -594,7 +720,25 @@ export class DatabaseStorage implements IStorage {
       attachments: post.attachments || [],
       pollData: post.pollData || null,
     }).returning();
+
+    if (redis) {
+      await this.clearPublicPostsCache();
+    }
+
     return newPost;
+  }
+
+  async clearPublicPostsCache() {
+    if (!redis) return;
+    try {
+      const keys = await redis.keys("posts:public:*");
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        console.log(`[STORAGE] Invalidated ${keys.length} public post cache keys.`);
+      }
+    } catch (err) {
+      console.error("[STORAGE] Redis clear cache error:", err);
+    }
   }
 
   async toggleReaction(userId: string, targetType: 'post' | 'comment', targetId: number, type: 'support' | 'helpful'): Promise<{ action: 'added' | 'removed' }> {
@@ -729,33 +873,47 @@ export class DatabaseStorage implements IStorage {
     return { mutualReveal, chatRequest: updated };
   }
 
-  async getChatRequests(userId: string): Promise<(ChatRequest & {
-    otherUserRole?: string | null;
-    otherUserId: string;
-    otherUserProfile?: Profile & {
-      companyName: string;
-      firstName: string | null;
-      lastName: string | null;
-      profileImageUrl: string | null;
-    }
-  })[]> {
-    // Fetch requests where user is either requester or recipient
-    const requests = await db.select().from(chatRequests).where(
-      sql`${chatRequests.requesterId} = ${userId} OR ${chatRequests.recipientId} = ${userId}`
-    ).orderBy(desc(chatRequests.createdAt));
+  async getChatRequests(userId: string): Promise<any[]> {
+    // Fetch requests joined with profiles to get other user role in one go
+    const requestsList = await db.select({
+      request: chatRequests,
+      requesterRole: sql<string>`p1.role`,
+      recipientRole: sql<string>`p2.role`,
+      requesterCompanyId: sql<number>`p1.company_id`,
+      recipientCompanyId: sql<number>`p2.company_id`,
+    })
+      .from(chatRequests)
+      .leftJoin(sql`${profiles} p1`, eq(chatRequests.requesterId, sql`p1.user_id`))
+      .leftJoin(sql`${profiles} p2`, eq(chatRequests.recipientId, sql`p2.user_id`))
+      .where(sql`${chatRequests.requesterId} = ${userId} OR ${chatRequests.recipientId} = ${userId}`)
+      .orderBy(desc(chatRequests.createdAt));
 
-    const enriched = await Promise.all(requests.map(async (req: ChatRequest) => {
+    // For requests with mutual reveal, we need more details
+    const mutualRevealRequests = requestsList.filter(r => r.request.senderIdentityRevealed && r.request.receiverIdentityRevealed);
+
+    // Batch fetch users and profiles if needed
+    const otherUserIds = mutualRevealRequests.map(r => r.request.requesterId === userId ? r.request.recipientId : r.request.requesterId);
+    const usersBatch = otherUserIds.length > 0 ? await db.select().from(users).where(inArray(users.id, otherUserIds)) : [];
+
+    // Batch fetch companies if needed
+    const companyIds = Array.from(new Set(mutualRevealRequests.map(r => r.request.requesterId === userId ? r.recipientCompanyId : r.requesterCompanyId).filter(Boolean)));
+    const companiesBatch = companyIds.length > 0 ? await db.select().from(companies).where(inArray(companies.id, companyIds)) : [];
+
+    return requestsList.map((item: any) => {
+      const req = item.request;
       const isRequester = req.requesterId === userId;
       const otherUserId = isRequester ? req.recipientId : req.requesterId;
-      const [otherProfile] = await db.select().from(profiles).where(eq(profiles.userId, otherUserId));
+      const otherUserRole = isRequester ? item.recipientRole : item.requesterRole;
+      const otherUserCompanyId = isRequester ? item.recipientCompanyId : item.requesterCompanyId;
 
-      // Only include full profile if mutual reveal has happened
       let otherUserProfile = undefined;
       if (req.senderIdentityRevealed && req.receiverIdentityRevealed) {
-        const company = otherProfile?.companyId ? await this.getCompany(otherProfile.companyId) : null;
-        const otherUser = await this.getUser(otherUserId);
+        const otherUser = usersBatch.find(u => u.id === otherUserId);
+        const company = companiesBatch.find(c => c.id === otherUserCompanyId);
+
         otherUserProfile = {
-          ...otherProfile,
+          userId: otherUserId,
+          role: otherUserRole,
           firstName: otherUser?.firstName || null,
           lastName: otherUser?.lastName || null,
           profileImageUrl: otherUser?.profileImageUrl || null,
@@ -765,13 +923,11 @@ export class DatabaseStorage implements IStorage {
 
       return {
         ...req,
-        otherUserRole: otherProfile?.role || "Verified Employee",
+        otherUserRole: otherUserRole || "Verified Employee",
         otherUserId,
         otherUserProfile
       };
-    }));
-
-    return enriched;
+    });
   }
 
   // === PRIVATE MESSAGES ===

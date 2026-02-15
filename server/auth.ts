@@ -4,21 +4,38 @@ import axios from "axios";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
+import { RedisStore } from "connect-redis";
+import Redis from "ioredis";
+import { redis as redisClient } from "./redis.js";
 import { storage } from "./storage.js";
 
 export function getSession() {
     const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
-    const databaseUrl = process.env.DATABASE_URL?.trim();
-    const pgStore = connectPg(session);
-    const sessionStore = new pgStore({
-        conString: databaseUrl,
-        createTableIfMissing: false,
-        ttl: sessionTtl,
-        tableName: "sessions",
-    });
+    const redisUrl = process.env.REDIS_URL;
+    let sessionStore;
+
+    if (redisUrl && redisClient) {
+        console.log("[AUTH] Initializing Redis session store.");
+        sessionStore = new RedisStore({
+            client: redisClient,
+            prefix: "offisocial:",
+            ttl: Math.floor(sessionTtl / 1000),
+        });
+    } else {
+        console.log("[AUTH] Redis not configured, falling back to PostgreSQL session store.");
+        const databaseUrl = process.env.DATABASE_URL?.trim();
+        const pgStore = connectPg(session);
+        sessionStore = new pgStore({
+            conString: databaseUrl,
+            createTableIfMissing: false,
+            ttl: sessionTtl,
+            tableName: "sessions",
+        });
+    }
+
     return session({
         secret: process.env.SESSION_SECRET || "default_secret_for_local_dev",
-        store: sessionStore,
+        store: sessionStore as any,
         resave: false,
         saveUninitialized: false,
         cookie: {

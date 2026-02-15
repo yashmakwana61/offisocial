@@ -83,7 +83,8 @@ export const posts = pgTable("posts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
   index("posts_company_id_idx").on(table.companyId),
-  index("posts_category_idx").on(table.category)
+  index("posts_category_idx").on(table.category),
+  index("posts_author_id_idx").on(table.authorId)
 ]);
 
 // === COMMENTS ===
@@ -95,7 +96,8 @@ export const comments = pgTable("comments", {
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
-  index("comments_post_id_idx").on(table.postId)
+  index("comments_post_id_idx").on(table.postId),
+  index("comments_author_id_idx").on(table.authorId)
 ]);
 
 // === REACTIONS ===
@@ -106,7 +108,8 @@ export const reactions = pgTable("reactions", {
   userId: text("user_id").notNull(),
   type: text("type", { enum: ["support", "helpful"] }).notNull(),
 }, (table) => [
-  uniqueIndex("reaction_user_target_idx").on(table.userId, table.targetType, table.targetId)
+  uniqueIndex("reaction_user_target_idx").on(table.userId, table.targetType, table.targetId),
+  index("reactions_target_idx").on(table.targetType, table.targetId)
 ]);
 
 // === POLL VOTES ===
@@ -117,7 +120,8 @@ export const pollVotes = pgTable("poll_votes", {
   optionIndex: integer("option_index").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
-  uniqueIndex("poll_vote_user_post_idx").on(table.userId, table.postId)
+  uniqueIndex("poll_vote_user_post_idx").on(table.userId, table.postId),
+  index("poll_votes_post_id_idx").on(table.postId)
 ]);
 
 // === REPORTS ===
@@ -129,7 +133,9 @@ export const reports = pgTable("reports", {
   reason: text("reason").notNull(),
   status: text("status", { enum: ["pending", "resolved", "dismissed"] }).default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("reports_target_idx").on(table.targetType, table.targetId)
+]);
 
 // === RELATIONS ===
 export const profilesRelations = relations(profiles, ({ one }) => ({
