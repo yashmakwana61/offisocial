@@ -1,5 +1,5 @@
-import { db } from "./db";
-import { companies, posts, profiles } from "../shared/schema";
+import { db } from "./db.js";
+import { companies, posts, profiles } from "../shared/schema.js";
 
 export async function seedDatabase() {
   try {
