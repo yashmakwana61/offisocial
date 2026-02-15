@@ -4,8 +4,8 @@ import {
   type CreatePostInput, type CreateCommentInput, type CreateWeeklyCheckinInput, type CreateSalaryInput, type CreateInterviewInput,
   type WeeklyCheckin, type LinkedinExchange, type ChatRequest, type PrivateMessage, type Block, type Salary, type Interview, type PollVote,
   type UpsertUser
-} from "../shared/schema";
-import { db } from "./db";
+} from "../shared/schema.js";
+import { db } from "./db.js";
 import { eq, and, desc, sql, inArray, like } from "drizzle-orm";
 
 function maskEmail(email: string | null): string {

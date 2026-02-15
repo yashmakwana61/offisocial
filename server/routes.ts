@@ -5,10 +5,10 @@ import { storage } from "./storage.js";
 import { z } from "zod";
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
-import { emitEvent } from "./socket";
-import { db } from "./db";
+import { emitEvent } from "./socket.js";
+import { db } from "./db.js";
 import { eq, desc, sql } from "drizzle-orm";
-import { reports, users, posts } from "../shared/schema";
+import { reports, users, posts } from "../shared/schema.js";
 
 async function isAdminMiddleware(req: any, res: Response, next: NextFunction) {
   if (!req.isAuthenticated()) {

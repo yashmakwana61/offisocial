@@ -128,10 +128,18 @@ export async function setupAuth(app: Express) {
         );
     };
 
+    const clientId = process.env.LINKEDIN_CLIENT_ID;
+    const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+
+    if (!clientId || !clientSecret) {
+        console.warn("[AUTH] WARNING: LINKEDIN_CLIENT_ID or LINKEDIN_CLIENT_SECRET is missing. LinkedIn authentication will be disabled.");
+        return;
+    }
+
     const strategy = new LinkedInStrategy(
         {
-            clientID: process.env.LINKEDIN_CLIENT_ID!,
-            clientSecret: process.env.LINKEDIN_CLIENT_SECRET!,
+            clientID: clientId,
+            clientSecret: clientSecret,
             callbackURL: process.env.LINKEDIN_CALLBACK_URL || "http://localhost:5000/api/auth/linkedin/callback",
             scope: ["openid", "profile", "email"],
         },

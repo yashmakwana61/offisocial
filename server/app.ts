@@ -93,9 +93,9 @@ export async function createApp() {
     });
 
     // Register routes
-    // httpServer is optional, so we can pass undefined or let the caller attach it if they have it
-    // For Vercel, we don't have an httpServer in the same way, so we leave it.
+    console.log("[APP] Registering routes...");
     await registerRoutes(app);
+    console.log("[APP] Routes registered successfully.");
 
     // Error handling middleware
     app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

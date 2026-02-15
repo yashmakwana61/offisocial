@@ -1,6 +1,6 @@
-import { createApp } from "./app";
-import { seedDatabase } from "./seed";
-import { serveStatic } from "./static";
+import { createApp } from "./app.js";
+import { seedDatabase } from "./seed.js";
+import { serveStatic } from "./static.js";
 import { createServer } from "http";
 
 export function log(message: string, source = "express") {
