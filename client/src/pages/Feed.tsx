@@ -11,6 +11,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CreatePostDialog } from "@/components/CreatePostDialog";
 
 import { useLocation } from "wouter";
+import { SEO } from "@/components/SEO";
 
 export default function Feed() {
   const { user, isLoading: authLoading } = useAuth();
@@ -48,6 +49,10 @@ export default function Feed() {
 
   return (
     <div className="space-y-6">
+      <SEO
+        title="Feed"
+        description="Browse the anonymous feed of professional insights, workplace stories, and industry discussions."
+      />
       {/* Feed Controls */}
       <div className="bg-card/50 backdrop-blur-sm sticky top-[4rem] z-30 py-2 -mx-4 px-4 border-b md:border-none md:static md:bg-transparent md:p-0">
         <CategoryFilter selected={category} onSelect={setCategory} />
@@ -71,6 +76,7 @@ export default function Feed() {
         <section className="relative overflow-hidden bg-primary/5 border border-primary/20 rounded-2xl p-6 sm:p-8">
           <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-primary/10 rounded-full blur-3xl" />
           <div className="relative z-10 space-y-4">
+            <h1 className="font-display font-bold text-2xl tracking-tight sr-only">Feed</h1>
             <h2 className="text-2xl font-display font-bold text-foreground leading-tight">
               A silent, safe place for <br />
               <span className="text-primary font-extrabold italic">honest work talk.</span>

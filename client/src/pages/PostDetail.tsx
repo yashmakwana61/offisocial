@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, MessageCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { SEO } from "@/components/SEO";
 
 export default function PostDetail() {
   const { id } = useParams();
@@ -64,6 +65,10 @@ export default function PostDetail() {
 
   return (
     <div className="space-y-6">
+      <SEO
+        title={post.content.length > 50 ? post.content.slice(0, 50) + "..." : post.content}
+        description={post.content.length > 150 ? post.content.slice(0, 150) + "..." : post.content}
+      />
       <Link href="/">
         <Button variant="ghost" className="gap-2 pl-0 hover:bg-transparent hover:text-primary text-sm sm:text-base -ml-2">
           <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />

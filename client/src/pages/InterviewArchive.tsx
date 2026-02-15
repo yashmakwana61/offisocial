@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { SEO } from "@/components/SEO";
 import { useInterviews, useSubmitInterview } from "@/hooks/use-features";
 import { useProfile } from "@/hooks/use-profiles";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,10 @@ export default function InterviewArchive() {
 
     return (
         <div className="min-h-screen bg-background pb-20">
+            <SEO
+                title="Interview Archive"
+                description="Read anonymous interview experiences and questions shared by professionals to help you prepare."
+            />
             <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40 mb-6">
                 <div className="max-w-4xl mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <h1 className="font-display font-bold text-2xl tracking-tight">Interview Archive</h1>

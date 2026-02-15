@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { SEO } from "@/components/SEO";
 import { useSalaries, useSubmitSalary } from "@/hooks/use-features";
 import { useProfile } from "@/hooks/use-profiles";
 import { Button } from "@/components/ui/button";
@@ -62,6 +63,10 @@ export default function SalaryBoard() {
 
     return (
         <div className="min-h-screen bg-background pb-20">
+            <SEO
+                title="Salary Board"
+                description="Explore anonymous salary data and compensation benchmarking shared by verified professionals."
+            />
             <header className="sticky top-0 z-30 bg-background/80 backdrop-blur-md border-b border-border/40 mb-6">
                 <div className="max-w-4xl mx-auto px-4 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <h1 className="font-display font-bold text-2xl tracking-tight">Salary Board</h1>

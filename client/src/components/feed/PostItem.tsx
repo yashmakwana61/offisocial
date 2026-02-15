@@ -241,7 +241,7 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
                                     {file.type === 'image' ? (
                                         <img
                                             src={file.url}
-                                            alt={file.name}
+                                            alt={file.name || "Post attachment"}
                                             loading="lazy"
                                             className="max-h-[300px] rounded-xl object-contain border bg-muted/10 cursor-pointer hover:opacity-90 transition-opacity"
                                             onClick={() => window.open(file.url, '_blank')}

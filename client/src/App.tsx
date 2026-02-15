@@ -10,6 +10,7 @@ import { useEffect } from "react";
 import { ThemeProvider } from "next-themes";
 import Layout from "./components/layout/Layout";
 import { SocketProvider } from "@/lib/socket";
+import { HelmetProvider } from "react-helmet-async";
 
 import NotFound from "@/pages/not-found";
 import Feed from "@/pages/Feed";
@@ -111,12 +112,14 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <SocketProvider>
-          <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-            <TooltipProvider>
-              <Toaster />
-              <Router />
-            </TooltipProvider>
-          </ThemeProvider>
+          <HelmetProvider>
+            <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+              <TooltipProvider>
+                <Toaster />
+                <Router />
+              </TooltipProvider>
+            </ThemeProvider>
+          </HelmetProvider>
         </SocketProvider>
       </AuthProvider>
     </QueryClientProvider>

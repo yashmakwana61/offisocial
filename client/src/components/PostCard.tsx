@@ -140,8 +140,8 @@ export function PostCard({ post, compact = false }: PostCardProps) {
                 {file.type === 'image' ? (
                   <img
                     src={file.url}
-                    alt={file.name}
-                    className="max-h-[300px] rounded-xl object-contain border bg-muted/10 cursor-pointer hover:opacity-90 transition-opacity"
+                    alt={file.name || "Attached image"}
+                    loading="lazy"
                     onClick={() => window.open(file.url, '_blank')}
                   />
                 ) : (
