@@ -64,11 +64,11 @@ export const profiles = pgTable("profiles", {
 
 // === POSTS ===
 export const POST_CATEGORIES = [
+  "General",
   "Mental Stress / Burnout",
   "Toxic Work Culture",
   "Need Referral / Job Help",
   "Policy / Work Discussion",
-  "General Experience",
 ] as const;
 
 export const posts = pgTable("posts", {
@@ -76,7 +76,7 @@ export const posts = pgTable("posts", {
   companyId: integer("company_id").notNull().references(() => companies.id),
   authorId: text("author_id").notNull(), // FK to users.id (kept private in API)
   content: text("content").notNull(),
-  category: text("category", { enum: POST_CATEGORIES }).notNull(),
+  category: text("category", { enum: POST_CATEGORIES }).notNull().default("General"),
   attachments: jsonb("attachments").default([]), // Array of { type, url, name }
   pollData: jsonb("poll_data"), // { question: string, options: string[] }
   createdAt: timestamp("created_at").defaultNow(),

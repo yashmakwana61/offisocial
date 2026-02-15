@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { POST_CATEGORIES } from "@shared/schema";
 import Reactions from "./Reactions";
-import { UserCircle, MoreHorizontal, Flag, FileText, MessageCircle, Lock } from "lucide-react";
+import { UserCircle, MoreHorizontal, Flag, FileText, MessageCircle, Lock, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     DropdownMenu,
@@ -79,6 +79,44 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
         }
 
         setIsChatRequestOpen(true);
+    };
+
+    const handleShare = async (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const shareUrl = `${window.location.origin}/posts/${post.id}`;
+        const shareData = {
+            title: 'Check out this post on Offisocial',
+            text: post.content.substring(0, 100) + '...',
+            url: shareUrl,
+        };
+
+        try {
+            if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+                await navigator.share(shareData);
+                toast({
+                    title: "Shared successfully",
+                    description: "Post link shared.",
+                });
+            } else {
+                await navigator.clipboard.writeText(shareUrl);
+                toast({
+                    title: "Link copied",
+                    description: "Post link copied to clipboard. You can now invite your colleagues to see this post!",
+                });
+            }
+        } catch (err) {
+            console.error('Error sharing:', err);
+            // Fallback to clipboard if share was cancelled or failed
+            if ((err as Error).name !== 'AbortError') {
+                await navigator.clipboard.writeText(shareUrl);
+                toast({
+                    title: "Link copied",
+                    description: "Post link copied to clipboard.",
+                });
+            }
+        }
     };
 
     const handleDoubleTap = (e: React.MouseEvent) => {
@@ -244,6 +282,16 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
                                     <span className="text-xs font-medium">{user ? "Chat" : "Sign in to Chat"}</span>
                                 </Button>
                             )}
+
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={handleShare}
+                                className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5"
+                            >
+                                <Share2 className="w-4 h-4" />
+                                <span className="text-xs font-medium">Share</span>
+                            </Button>
 
                             <Link href={`/posts/${post.id}`}>
                                 <Button variant="ghost" size="sm" className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5">

@@ -52,7 +52,7 @@ export function CreatePostDialog() {
     resolver: zodResolver(insertPostSchema),
     defaultValues: {
       content: "",
-      category: "",
+      category: "General",
     },
   });
 
@@ -116,7 +116,7 @@ export function CreatePostDialog() {
 
   const onSubmit = (data: any) => {
     if (!data.category) {
-      data.category = "General Experience";
+      data.category = "General";
     }
 
     const pollData = showPoll && pollQuestion && pollOptions.every(o => o.trim())
