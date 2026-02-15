@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { insertPostSchema, insertCommentSchema, insertReportSchema, insertWeeklyCheckinSchema, insertLinkedinExchangeSchema, posts, comments, companies, profiles, weeklyCheckins, linkedinExchanges, reports } from './schema.js';
+import { insertPostSchema, insertCommentSchema, insertReportSchema, insertWeeklyCheckinSchema, insertLinkedinExchangeSchema, insertSalarySchema, insertInterviewSchema, insertPollVoteSchema, posts, comments, companies, profiles, weeklyCheckins, linkedinExchanges, reports, salaries, interviews, pollVotes } from './schema';
 
 // ============================================
 // SHARED ERROR SCHEMAS
@@ -16,6 +16,9 @@ export const errorSchemas = {
     message: z.string(),
   }),
   unauthorized: z.object({
+    message: z.string(),
+  }),
+  forbidden: z.object({
     message: z.string(),
   }),
 };
@@ -46,6 +49,11 @@ export const api = {
         role: z.string().min(2).max(50),
         companyName: z.string().min(2),
         linkedinUrl: z.string().url().optional().or(z.literal("")),
+        interests: z.array(z.string()).optional(),
+        persona: z.object({
+          avatarUrl: z.string().optional(),
+          themeColor: z.string().optional(),
+        }).optional(),
       }),
       responses: {
         201: z.custom<typeof profiles.$inferSelect>(),
@@ -107,6 +115,7 @@ export const api = {
           commentCount: number;
           reactionCounts: { support: number; helpful: number };
           userReaction: 'support' | 'helpful' | null;
+          pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
         }>()),
         401: errorSchemas.unauthorized,
       },
@@ -125,6 +134,7 @@ export const api = {
           reactionCounts: { support: number; helpful: number };
           authorRole: string | null;
           userReaction: 'support' | 'helpful' | null;
+          pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
         }>()),
       },
     },
@@ -137,6 +147,7 @@ export const api = {
           reactionCounts: { support: number; helpful: number };
           authorRole: string | null;
           userReaction: 'support' | 'helpful' | null;
+          pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
         }>(),
         404: errorSchemas.notFound,
       },
@@ -152,6 +163,7 @@ export const api = {
           })[];
           reactionCounts: { support: number; helpful: number };
           userReaction: 'support' | 'helpful' | null;
+          pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
         }>(),
         404: errorSchemas.notFound,
       },
@@ -163,6 +175,98 @@ export const api = {
       responses: {
         201: z.custom<typeof posts.$inferSelect>(),
         400: errorSchemas.validation,
+      },
+    },
+    vote: {
+      method: "POST" as const,
+      path: "/api/posts/:id/vote",
+      input: z.object({ optionIndex: z.number() }),
+      responses: {
+        200: z.object({ success: z.boolean() }),
+        400: errorSchemas.validation,
+        401: errorSchemas.unauthorized,
+      },
+    }
+  },
+  interviews: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/interviews',
+      input: z.object({
+        companyId: z.coerce.number().optional(),
+        role: z.string().optional(),
+      }).optional(),
+      responses: {
+        200: z.array(z.custom<typeof interviews.$inferSelect & { companyName: string }>()),
+        401: errorSchemas.unauthorized,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/interviews',
+      input: insertInterviewSchema,
+      responses: {
+        201: z.custom<typeof interviews.$inferSelect>(),
+        400: errorSchemas.validation,
+        401: errorSchemas.unauthorized,
+      },
+    },
+  },
+  admin: {
+    reports: {
+      list: {
+        method: 'GET' as const,
+        path: '/api/admin/reports',
+        responses: {
+          200: z.array(z.custom<typeof reports.$inferSelect>()),
+          401: errorSchemas.unauthorized,
+          403: errorSchemas.forbidden,
+        },
+      },
+      resolve: {
+        method: 'POST' as const,
+        path: '/api/admin/reports/:id/resolve',
+        input: z.object({ resolution: z.enum(['dismissed', 'resolved']) }),
+        responses: {
+          200: z.object({ success: z.boolean() }),
+          400: errorSchemas.validation,
+          401: errorSchemas.unauthorized,
+          403: errorSchemas.forbidden,
+        },
+      },
+    },
+    stats: {
+      get: {
+        method: 'GET' as const,
+        path: '/api/admin/stats',
+        responses: {
+          200: z.object({
+            userCount: z.number(),
+            postCount: z.number(),
+            reportCount: z.number(),
+          }),
+          401: errorSchemas.unauthorized,
+          403: errorSchemas.forbidden,
+        },
+      },
+    },
+  },
+  settings: {
+    get: {
+      method: 'GET' as const,
+      path: '/api/user/settings',
+      responses: {
+        200: z.any(), // Settings object structure is flexible
+        401: errorSchemas.unauthorized,
+      },
+    },
+    update: {
+      method: 'PATCH' as const,
+      path: '/api/user/settings',
+      input: z.any(),
+      responses: {
+        200: z.any(),
+        401: errorSchemas.unauthorized,
       },
     },
   },
@@ -357,6 +461,30 @@ export const api = {
         })),
       }
     }
+  },
+  salaries: {
+    list: {
+      method: 'GET' as const,
+      path: '/api/salaries',
+      input: z.object({
+        companyId: z.coerce.number().optional(),
+        role: z.string().optional(),
+      }).optional(),
+      responses: {
+        200: z.array(z.custom<typeof salaries.$inferSelect & { companyName: string }>()),
+        401: errorSchemas.unauthorized,
+      },
+    },
+    create: {
+      method: 'POST' as const,
+      path: '/api/salaries',
+      input: insertSalarySchema,
+      responses: {
+        201: z.custom<typeof salaries.$inferSelect>(),
+        400: errorSchemas.validation,
+        401: errorSchemas.unauthorized,
+      },
+    },
   },
 };
 

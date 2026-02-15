@@ -1,11 +1,11 @@
 import {
-  users, profiles, companies, posts, comments, reactions, reports, sessions, weeklyCheckins, linkedinExchanges, chatRequests, privateMessages, blocks,
+  users, profiles, companies, posts, comments, reactions, reports, sessions, weeklyCheckins, linkedinExchanges, chatRequests, privateMessages, blocks, salaries, interviews, pollVotes,
   type User, type Profile, type Company, type Post, type Comment, type Reaction, type Report,
-  type CreatePostInput, type CreateCommentInput, type CreateWeeklyCheckinInput,
-  type WeeklyCheckin, type LinkedinExchange, type ChatRequest, type PrivateMessage, type Block,
+  type CreatePostInput, type CreateCommentInput, type CreateWeeklyCheckinInput, type CreateSalaryInput, type CreateInterviewInput,
+  type WeeklyCheckin, type LinkedinExchange, type ChatRequest, type PrivateMessage, type Block, type Salary, type Interview, type PollVote,
   type UpsertUser
-} from "../shared/schema.js";
-import { db } from "./db.js";
+} from "../shared/schema";
+import { db } from "./db";
 import { eq, and, desc, sql, inArray, like } from "drizzle-orm";
 
 function maskEmail(email: string | null): string {
@@ -45,15 +45,29 @@ export interface IStorage {
 
   // Posts
   getCompanyPosts(companyId: number, userId: string, category?: string, limit?: number, offset?: number, searchQuery?: string): Promise<(Post & { commentCount: number; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
-  getPublicPosts(category?: string, limit?: number, offset?: number, userId?: string, searchQuery?: string): Promise<(Omit<Post, 'companyId' | 'authorId'> & { commentCount: number; reactionCounts: { support: number; helpful: number }; authorRole: string | null; userReaction: 'support' | 'helpful' | null })[]>;
-  getPost(id: number, userId: string): Promise<(Post & { reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null }) | undefined>;
+  getPublicPosts(category?: string, limit?: number, offset?: number, userId?: string, searchQuery?: string): Promise<(Omit<Post, 'companyId' | 'authorId'> & {
+    commentCount: number; reactionCounts: { support: number; helpful: number };
+    authorRole: string | null;
+    userReaction: 'support' | 'helpful' | null;
+    pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
+  })[]>;
+  getPost(id: number, userId: string): Promise<(Post & {
+    reactionCounts: { support: number; helpful: number };
+    userReaction: 'support' | 'helpful' | null;
+    pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
+  }) | undefined>;
   getPublicPost(id: number, userId?: string): Promise<(Omit<Post, 'companyId' | 'authorId'> & {
     comments: (Omit<Comment, 'authorId'> & { authorRole: string | null; reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[];
     reactionCounts: { support: number; helpful: number };
     authorRole: string | null;
     userReaction: 'support' | 'helpful' | null;
+    pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
   }) | undefined>;
-  createPost(userId: string, companyId: number, post: CreatePostInput & { attachments?: any[] }): Promise<Post>;
+  createPost(userId: string, companyId: number, post: CreatePostInput & { attachments?: any[], pollData?: any }): Promise<Post>;
+
+  // Polls
+  votePoll(userId: string, postId: number, optionIndex: number): Promise<void>;
+  getPollResults(postId: number, userId?: string): Promise<{ options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null } | undefined>;
 
   // Comments
   getPostComments(postId: number, userId: string): Promise<(Comment & { reactionCounts: { support: number; helpful: number }; userReaction: 'support' | 'helpful' | null })[]>;
@@ -102,6 +116,18 @@ export interface IStorage {
   // Reports
   createReport(userId: string, targetType: 'post' | 'comment', targetId: number, reason: string): Promise<Report>;
   searchCompanies(query: string): Promise<Company[]>;
+
+  // Salaries
+  getSalaries(companyId?: number, role?: string): Promise<(Salary & { companyName: string })[]>;
+  createSalary(userId: string, salary: CreateSalaryInput): Promise<Salary>;
+
+  // Interviews
+  getInterviews(companyId?: number, role?: string): Promise<(Interview & { companyName: string })[]>;
+  createInterview(userId: string, interview: CreateInterviewInput): Promise<Interview>;
+
+  // Admin & Settings
+  updateProfileSettings(userId: string, settings: any): Promise<Profile>;
+  setAdminStatus(userId: string, isAdmin: boolean): Promise<Profile>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -229,7 +255,7 @@ export class DatabaseStorage implements IStorage {
     return company;
   }
 
-  async createProfile(userId: string, role: string, companyName: string, hashedLinkedinId?: string, status: Profile["accountStatus"] = "pending", linkedinUrl?: string): Promise<Profile> {
+  async createProfile(userId: string, role: string, companyName: string, hashedLinkedinId?: string, status: Profile["accountStatus"] = "pending", linkedinUrl?: string, interests?: string[], persona?: any): Promise<Profile> {
     const company = await this.findOrCreateCompany(companyName);
 
     const [profile] = await db.insert(profiles).values({
@@ -240,6 +266,8 @@ export class DatabaseStorage implements IStorage {
       accountStatus: status,
       verificationStep: status === "verified_full" ? "completed" : "oauth_completed",
       linkedinUrlEncrypted: linkedinUrl,
+      interests: interests || [],
+      persona: persona || null,
       joinedAt: new Date(),
     }).returning();
     return profile;
@@ -366,7 +394,7 @@ export class DatabaseStorage implements IStorage {
       .limit(limit)
       .offset(offset);
 
-    return postsList.map((item: any) => ({
+    return Promise.all(postsList.map(async (item: any) => ({
       ...item.post,
       authorRole: item.authorRole || "Verified Employee",
       commentCount: Number(item.commentCount),
@@ -374,8 +402,9 @@ export class DatabaseStorage implements IStorage {
         support: Number(item.supportCount),
         helpful: Number(item.helpfulCount)
       },
-      userReaction: item.userReaction || null
-    }));
+      userReaction: item.userReaction || null,
+      pollResults: await this.getPollResults(item.post.id, userId)
+    })));
   }
 
   async getPublicPosts(category?: string, limit = 20, offset = 0, userId?: string, searchQuery?: string): Promise<any[]> {
@@ -419,7 +448,7 @@ export class DatabaseStorage implements IStorage {
     // Fetch all companies once for sanitization (keeping this for now, though it's still a bit heavy if there are many)
     const allCompanies = await db.select({ name: companies.name }).from(companies);
 
-    return postsList.map((item: any) => {
+    return Promise.all(postsList.map(async (item: any) => {
       let sanitizedContent = item.post.content;
       allCompanies.forEach((c: { name: string }) => {
         const regex = new RegExp(c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
@@ -430,6 +459,7 @@ export class DatabaseStorage implements IStorage {
         id: item.post.id,
         content: sanitizedContent,
         category: item.post.category,
+        attachments: item.post.attachments || [],
         createdAt: item.post.createdAt,
         updatedAt: item.post.updatedAt,
         authorId: item.post.authorId,
@@ -439,9 +469,10 @@ export class DatabaseStorage implements IStorage {
           helpful: Number(item.helpfulCount)
         },
         authorRole: item.authorRole || "Verified Employee",
-        userReaction: item.userReaction || null
+        userReaction: item.userReaction || null,
+        pollResults: await this.getPollResults(item.post.id, userId)
       };
-    });
+    }));
   }
 
   async getPost(id: number, userId: string): Promise<any | undefined> {
@@ -455,7 +486,8 @@ export class DatabaseStorage implements IStorage {
       ...post,
       commentCount: Number(commentCount.count),
       reactionCounts: reactionStats.counts,
-      userReaction: reactionStats.userReaction
+      userReaction: reactionStats.userReaction,
+      pollResults: await this.getPollResults(id, userId)
     };
   }
 
@@ -515,13 +547,15 @@ export class DatabaseStorage implements IStorage {
       id: post.id,
       content: sanitizedContent,
       category: post.category,
+      attachments: post.attachments || [],
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
       authorRole: profile?.role || "Verified Employee",
       commentCount: enrichedComments.length,
       reactionCounts: reactionStats.counts,
       userReaction: reactionStats.userReaction,
-      comments: enrichedComments
+      comments: enrichedComments,
+      pollResults: await this.getPollResults(id, userId)
     };
   }
 
@@ -552,12 +586,13 @@ export class DatabaseStorage implements IStorage {
     return newComment;
   }
 
-  async createPost(userId: string, companyId: number, post: CreatePostInput & { attachments?: any[] }): Promise<Post> {
+  async createPost(userId: string, companyId: number, post: CreatePostInput & { attachments?: any[], pollData?: any }): Promise<Post> {
     const [newPost] = await db.insert(posts).values({
       ...post,
       authorId: userId,
       companyId,
       attachments: post.attachments || [],
+      pollData: post.pollData || null,
     }).returning();
     return newPost;
   }
@@ -830,6 +865,117 @@ export class DatabaseStorage implements IStorage {
 
   async searchCompanies(query: string): Promise<Company[]> {
     return await db.select().from(companies).where(like(sql`lower(${companies.name})`, `%${query.toLowerCase()}%`)).limit(10);
+  }
+
+  async getSalaries(companyId?: number, role?: string): Promise<any[]> {
+    const conditions = [];
+    if (companyId) conditions.push(eq(salaries.companyId, companyId));
+    if (role) {
+      const searchTerms = `%${role.toLowerCase()}%`;
+      conditions.push(sql`lower(${salaries.role}) LIKE ${searchTerms}`);
+    }
+
+    const results = await db.select({
+      salary: salaries,
+      companyName: companies.name,
+    })
+      .from(salaries)
+      .leftJoin(companies, eq(salaries.companyId, companies.id))
+      .where(and(...conditions))
+      .orderBy(desc(salaries.createdAt));
+
+    return results.map((r: any) => ({
+      ...r.salary,
+      companyName: r.companyName || "Unknown Company",
+    }));
+  }
+
+  async createSalary(userId: string, input: CreateSalaryInput): Promise<Salary> {
+    const [salary] = await db.insert(salaries).values({
+      ...input,
+      userId,
+    }).returning();
+    return salary;
+  }
+
+  // === POLLS ===
+  async votePoll(userId: string, postId: number, optionIndex: number): Promise<void> {
+    await db.insert(pollVotes).values({
+      userId,
+      postId,
+      optionIndex,
+    }).onConflictDoUpdate({
+      target: [pollVotes.userId, pollVotes.postId],
+      set: { optionIndex, createdAt: new Date() }
+    });
+  }
+
+  async getPollResults(postId: number, userId?: string): Promise<any> {
+    const [post] = await db.select().from(posts).where(eq(posts.id, postId));
+    if (!post || !post.pollData) return undefined;
+
+    const pollData = post.pollData as { question: string, options: string[] };
+    const votes = await db.select().from(pollVotes).where(eq(pollVotes.postId, postId));
+
+    const results = pollData.options.map((option, index) => ({
+      label: option,
+      count: votes.filter((v: any) => v.optionIndex === index).length,
+    }));
+
+    const userVote = userId ? votes.find((v: any) => v.userId === userId) : null;
+
+    return {
+      options: results,
+      totalVotes: votes.length,
+      userVoteIndex: userVote?.optionIndex ?? null,
+    };
+  }
+
+  async getInterviews(companyId?: number, role?: string): Promise<any[]> {
+    const conditions = [];
+    if (companyId) conditions.push(eq(interviews.companyId, companyId));
+    if (role) {
+      const searchTerms = `%${role.toLowerCase()}%`;
+      conditions.push(sql`lower(${interviews.role}) LIKE ${searchTerms}`);
+    }
+
+    const results = await db.select({
+      interview: interviews,
+      companyName: companies.name,
+    })
+      .from(interviews)
+      .leftJoin(companies, eq(interviews.companyId, companies.id))
+      .where(and(...conditions))
+      .orderBy(desc(interviews.createdAt));
+
+    return results.map((r: any) => ({
+      ...r.interview,
+      companyName: r.companyName || "Unknown Company",
+    }));
+  }
+
+  async createInterview(userId: string, input: CreateInterviewInput): Promise<Interview> {
+    const [interview] = await db.insert(interviews).values({
+      ...input,
+      userId,
+    }).returning();
+    return interview;
+  }
+
+  async updateProfileSettings(userId: string, settings: any): Promise<Profile> {
+    const [profile] = await db.update(profiles)
+      .set({ settings })
+      .where(eq(profiles.userId, userId))
+      .returning();
+    return profile;
+  }
+
+  async setAdminStatus(userId: string, isAdmin: boolean): Promise<Profile> {
+    const [profile] = await db.update(profiles)
+      .set({ isAdmin })
+      .where(eq(profiles.userId, userId))
+      .returning();
+    return profile;
   }
 }
 

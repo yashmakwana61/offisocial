@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ChatRequestModal } from "@/components/chat/ChatRequestModal";
 import { useToast } from "@/hooks/use-toast";
+import { PollCard } from "./PollCard";
 
 interface PostCardProps {
   post: {
@@ -27,6 +28,7 @@ interface PostCardProps {
     reactionCounts: { support: number; helpful: number };
     userReaction: 'support' | 'helpful' | null;
     attachments?: { type: 'image' | 'document'; url: string; name: string }[];
+    pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
     authorId?: string; // Added to check if it's own post
   };
   compact?: boolean;
@@ -126,6 +128,10 @@ export function PostCard({ post, compact = false }: PostCardProps) {
             {renderContent(post.content)}
           </p>
         </Link>
+
+        {post.pollResults && (
+          <PollCard postId={post.id} pollResults={post.pollResults} />
+        )}
 
         {post.attachments && post.attachments.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-3">

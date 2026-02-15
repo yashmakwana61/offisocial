@@ -121,3 +121,164 @@ export function useAggregatedCheckins() {
     });
 }
 
+// === SALARIES ===
+
+export function useSalaries(companyId?: number, role?: string) {
+    const queryKey = [api.salaries.list.path, companyId, role];
+    return useQuery({
+        queryKey,
+        queryFn: async () => {
+            const params = new URLSearchParams();
+            if (companyId) params.append("companyId", String(companyId));
+            if (role) params.append("role", role);
+
+            const url = `${api.salaries.list.path}${params.toString() ? `?${params.toString()}` : ""}`;
+            const res = await fetch(url, { credentials: "include" });
+            if (!res.ok) throw new Error("Failed to fetch salaries");
+            return res.json();
+        },
+    });
+}
+
+export function useSubmitSalary() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (data: any) => {
+            const res = await fetch(api.salaries.create.path, {
+                method: api.salaries.create.method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+                credentials: "include",
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                throw new Error(error.message || "Failed to submit salary");
+            }
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [api.salaries.list.path] });
+        },
+    });
+}
+
+// === INTERVIEWS ===
+
+export function useInterviews(companyId?: number, role?: string) {
+    const queryKey = [api.interviews.list.path, companyId, role];
+    return useQuery({
+        queryKey,
+        queryFn: async () => {
+            const params = new URLSearchParams();
+            if (companyId) params.append("companyId", String(companyId));
+            if (role) params.append("role", role);
+
+            const url = `${api.interviews.list.path}${params.toString() ? `?${params.toString()}` : ""}`;
+            const res = await fetch(url, { credentials: "include" });
+            if (!res.ok) throw new Error("Failed to fetch interviews");
+            return res.json();
+        },
+    });
+}
+
+export function useSubmitInterview() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (data: any) => {
+            const res = await fetch(api.interviews.create.path, {
+                method: api.interviews.create.method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+                credentials: "include",
+            });
+
+            if (!res.ok) {
+                const error = await res.json();
+                throw new Error(error.message || "Failed to submit interview");
+            }
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [api.interviews.list.path] });
+        },
+    });
+}
+
+// === ADMIN ===
+
+export function useAdminStats() {
+    return useQuery({
+        queryKey: [api.admin.stats.get.path],
+        queryFn: async () => {
+            const res = await fetch(api.admin.stats.get.path, { credentials: "include" });
+            if (!res.ok) throw new Error("Failed to fetch admin stats");
+            return res.json();
+        },
+    });
+}
+
+export function useAdminReports() {
+    return useQuery({
+        queryKey: [api.admin.reports.list.path],
+        queryFn: async () => {
+            const res = await fetch(api.admin.reports.list.path, { credentials: "include" });
+            if (!res.ok) throw new Error("Failed to fetch reports");
+            return res.json();
+        },
+    });
+}
+
+export function useResolveReport() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async ({ id, resolution }: { id: number; resolution: 'dismissed' | 'resolved' }) => {
+            const url = api.admin.reports.resolve.path.replace(":id", String(id));
+            const res = await fetch(url, {
+                method: api.admin.reports.resolve.method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ resolution }),
+                credentials: "include",
+            });
+            if (!res.ok) throw new Error("Failed to resolve report");
+            return res.json();
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: [api.admin.reports.list.path] });
+            queryClient.invalidateQueries({ queryKey: [api.admin.stats.get.path] });
+        },
+    });
+}
+
+// === SETTINGS ===
+
+export function useSettings() {
+    return useQuery({
+        queryKey: [api.settings.get.path],
+        queryFn: async () => {
+            const res = await fetch(api.settings.get.path, { credentials: "include" });
+            if (!res.ok) throw new Error("Failed to fetch settings");
+            return res.json();
+        },
+    });
+}
+
+export function useUpdateSettings() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (settings: any) => {
+            const res = await fetch(api.settings.update.path, {
+                method: api.settings.update.method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(settings),
+                credentials: "include",
+            });
+            if (!res.ok) throw new Error("Failed to update settings");
+            return res.json();
+        },
+        onSuccess: (newSettings) => {
+            queryClient.setQueryData([api.settings.get.path], newSettings);
+        },
+    });
+}
+

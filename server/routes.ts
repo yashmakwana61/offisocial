@@ -3,9 +3,23 @@ import passport from "passport";
 import { api } from "../shared/routes.js";
 import { storage } from "./storage.js";
 import { z } from "zod";
-import type { Express, Request, Response } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { emitEvent } from "./socket";
+import { db } from "./db";
+import { eq, desc, sql } from "drizzle-orm";
+import { reports, users, posts } from "../shared/schema";
+
+async function isAdminMiddleware(req: any, res: Response, next: NextFunction) {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  const profile = await storage.getProfile(req.user.id);
+  if (!profile || !profile.isAdmin) {
+    return res.status(403).json({ message: "Forbidden: Admin access required" });
+  }
+  next();
+}
 
 export async function registerRoutes(
   app: Express,
@@ -54,13 +68,15 @@ export async function registerRoutes(
           role: input.role,
           companyId: company.id,
           linkedinUrlEncrypted: input.linkedinUrl,
+          interests: input.interests,
+          persona: input.persona,
           accountStatus: "verified_full",
           verificationStep: "completed"
         });
         return res.status(200).json(updated);
       }
 
-      const profile = await storage.createProfile(userId, input.role, input.companyName, undefined, "verified_full", input.linkedinUrl);
+      const profile = await storage.createProfile(userId, input.role, input.companyName, undefined, "verified_full", input.linkedinUrl, input.interests, input.persona);
       res.status(201).json(profile);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -231,7 +247,8 @@ export async function registerRoutes(
 
       const post = await storage.createPost(userId, companyId, {
         ...input,
-        attachments: req.body.attachments || []
+        attachments: req.body.attachments || [],
+        pollData: req.body.pollData
       });
       emitEvent("post:created", post);
       res.status(201).json(post);
@@ -571,6 +588,118 @@ export async function registerRoutes(
     if (!query) return res.json([]);
     const companies = await storage.searchCompanies(query);
     res.json(companies);
+  });
+
+  // === SALARIES ===
+  app.get(api.salaries.list.path, isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
+      const role = req.query.role as string | undefined;
+      const results = await storage.getSalaries(companyId, role);
+      res.json(results);
+    } catch (err) {
+      console.error("Get salaries error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.salaries.create.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    try {
+      const input = api.salaries.create.input.parse(req.body);
+      const salary = await storage.createSalary(userId, input);
+      res.status(201).json(salary);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Create salary error:", err);
+      }
+    }
+  });
+
+  app.post(api.posts.vote.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    const postId = Number(req.params.id);
+    try {
+      const { optionIndex } = api.posts.vote.input.parse(req.body);
+      await storage.votePoll(userId, postId, optionIndex);
+      emitEvent("poll:voted", { postId, userId });
+      res.json({ success: true });
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Poll vote error:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  // === INTERVIEWS ===
+  app.get(api.interviews.list.path, isAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const companyId = req.query.companyId ? Number(req.query.companyId) : undefined;
+      const role = req.query.role as string | undefined;
+      const results = await storage.getInterviews(companyId, role);
+      res.json(results);
+    } catch (err) {
+      console.error("Get interviews error:", err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post(api.interviews.create.path, isAuthenticated, async (req: any, res: Response) => {
+    const userId = req.user.id;
+    try {
+      const input = api.interviews.create.input.parse(req.body);
+      const interview = await storage.createInterview(userId, input);
+      res.status(201).json(interview);
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        res.status(400).json({ message: err.errors[0].message });
+      } else {
+        console.error("Create interview error:", err);
+        res.status(500).json({ message: "Internal server error" });
+      }
+    }
+  });
+
+  // === ADMIN ROUTES ===
+  app.get(api.admin.reports.list.path, isAdminMiddleware, async (req: Request, res: Response) => {
+    // In a real app, storage would have getReports
+    const allReports = await db.select().from(reports).where(eq(reports.status, "pending")).orderBy(desc(reports.createdAt));
+    res.json(allReports);
+  });
+
+  app.post(api.admin.reports.resolve.path, isAdminMiddleware, async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    const { resolution } = api.admin.reports.resolve.input.parse(req.body);
+    await db.update(reports).set({ status: resolution }).where(eq(reports.id, id));
+    res.json({ success: true });
+  });
+
+  app.get(api.admin.stats.get.path, isAdminMiddleware, async (req: Request, res: Response) => {
+    const [uCount] = await db.select({ count: sql<number>`count(*)` }).from(users);
+    const [pCount] = await db.select({ count: sql<number>`count(*)` }).from(posts);
+    const [rCount] = await db.select({ count: sql<number>`count(*)` }).from(reports).where(eq(reports.status, "pending"));
+    res.json({
+      userCount: Number(uCount.count),
+      postCount: Number(pCount.count),
+      reportCount: Number(rCount.count),
+    });
+  });
+
+  // === USER SETTINGS ===
+  app.get(api.settings.get.path, isAuthenticated, async (req: any, res: Response) => {
+    const profile = await storage.getProfile(req.user.id);
+    res.json(profile?.settings || {});
+  });
+
+  app.patch(api.settings.get.path, isAuthenticated, async (req: any, res: Response) => {
+    const settings = req.body;
+    const profile = await storage.updateProfileSettings(req.user.id, settings);
+    res.json(profile.settings);
   });
 
   return httpServer;

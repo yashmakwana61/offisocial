@@ -1,8 +1,9 @@
-# SafeSpace - Anonymous Employee Social Platform
+# Offisocial - Anonymous Employee Social Platform
+Verified, professional, and completely anonymous.
 
 ## Overview
 
-SafeSpace is an MVP for a private, employee-only, anonymous social platform designed to provide psychological safety, peer support, and career help for employees. The platform explicitly excludes founders, owners, and C-level executives to create a safe space for individual contributors and non-executive managers.
+Offisocial is an MVP for a private, employee-only, anonymous social platform designed to provide psychological safety, peer support, and career help for employees. The platform explicitly excludes founders, owners, and C-level executives to create a safe space for individual contributors and non-executive managers.
 
 **Core Principles:**
 - Employees only (no founders/owners/C-level)

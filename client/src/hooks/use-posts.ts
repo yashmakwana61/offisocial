@@ -46,6 +46,9 @@ export function usePosts(category?: string, enabled = true, searchQuery?: string
     socket.on("post:created", onPostCreated);
     socket.on("reaction:updated", onReactionUpdated);
     socket.on("comment:created", onCommentCreated);
+    socket.on("poll:voted", (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
+    });
 
     return () => {
       socket.off("post:created", onPostCreated);
@@ -99,6 +102,9 @@ export function usePublicPosts(category?: string, enabled = true, searchQuery?: 
     socket.on("post:created", onPostCreated);
     socket.on("reaction:updated", onReactionUpdated);
     socket.on("comment:created", onCommentCreated);
+    socket.on("poll:voted", (data: any) => {
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
+    });
 
     return () => {
       socket.off("post:created", onPostCreated);
@@ -142,6 +148,11 @@ export function usePost(id: number) {
 
     socket.on("comment:created", onCommentCreated);
     socket.on("reaction:updated", onReactionUpdated);
+    socket.on("poll:voted", (data: any) => {
+      if (data.postId === id) {
+        queryClient.invalidateQueries({ queryKey: [api.posts.get.path, id] });
+      }
+    });
 
     return () => {
       socket.off("comment:created", onCommentCreated);
@@ -184,6 +195,11 @@ export function usePublicPost(id: number) {
 
     socket.on("comment:created", onCommentCreated);
     socket.on("reaction:updated", onReactionUpdated);
+    socket.on("poll:voted", (data: any) => {
+      if (data.postId === id) {
+        queryClient.invalidateQueries({ queryKey: [api.posts.publicGet.path, id] });
+      }
+    });
 
     return () => {
       socket.off("comment:created", onCommentCreated);
@@ -197,7 +213,7 @@ export function usePublicPost(id: number) {
 export function useCreatePost() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: CreatePostInput & { attachments?: any[] }) => {
+    mutationFn: async (data: CreatePostInput & { attachments?: any[], pollData?: any }) => {
       const res = await fetch(api.posts.create.path, {
         method: api.posts.create.method,
         headers: { "Content-Type": "application/json" },
@@ -209,6 +225,30 @@ export function useCreatePost() {
       return api.posts.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
+    },
+  });
+}
+
+export function useVotePoll() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ postId, optionIndex }: { postId: number; optionIndex: number }) => {
+      const url = buildUrl(api.posts.vote.path, { id: postId });
+      const res = await fetch(url, {
+        method: api.posts.vote.method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionIndex }),
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error("Failed to vote");
+      return api.posts.vote.responses[200].parse(await res.json());
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: [api.posts.get.path, variables.postId] });
+      queryClient.invalidateQueries({ queryKey: [api.posts.publicGet.path, variables.postId] });
       queryClient.invalidateQueries({ queryKey: [api.posts.list.path] });
       queryClient.invalidateQueries({ queryKey: [api.posts.publicList.path] });
     },
@@ -290,12 +330,12 @@ export function useToggleReaction() {
 
         // If we had a previous reaction, decrement that count
         if (oldReaction) {
-          counts[oldReaction] = Math.max(0, counts[oldReaction] - 1);
+          (counts as any)[oldReaction] = Math.max(0, (counts as any)[oldReaction] - 1);
         }
 
         // If we have a new reaction, increment that count
         if (newReaction) {
-          counts[newReaction] = counts[newReaction] + 1;
+          (counts as any)[newReaction] = ((counts as any)[newReaction] || 0) + 1;
         }
 
         return {

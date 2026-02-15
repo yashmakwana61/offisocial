@@ -28,13 +28,22 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
+import { BarChart2, CheckCircle2, PlusCircle, MinusCircle } from "lucide-react";
 
 export function CreatePostDialog() {
   const [open, setOpen] = useState(false);
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [showPoll, setShowPoll] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState(["", ""]);
   const [mentionQuery, setMentionQuery] = useState("");
   const [isMentioning, setIsMentioning] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [filteredCategories, setFilteredCategories] = useState<string[]>([]);
+  const [content, setContent] = useState("");
 
   const { toast } = useToast();
   const createPost = useCreatePost();
@@ -47,71 +56,80 @@ export function CreatePostDialog() {
     },
   });
 
-  const filteredCategories = POST_CATEGORIES.filter(cat =>
-    cat.toLowerCase().includes(mentionQuery.toLowerCase())
-  );
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'document') => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-      toast({ title: "File too large", description: "Maximum size is 5MB", variant: "destructive" });
-      return;
+  const handleAddOption = () => {
+    if (pollOptions.length < 5) {
+      setPollOptions([...pollOptions, ""]);
     }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      setAttachments(prev => [...prev, { type, url: base64, name: file.name }]);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = ''; // Reset input
   };
 
-  const removeAttachment = (index: number) => {
-    setAttachments(prev => prev.filter((_, i) => i !== index));
+  const handleRemoveOption = (index: number) => {
+    if (pollOptions.length > 2) {
+      setPollOptions(pollOptions.filter((_, i) => i !== index));
+    }
+  };
+
+  const handleOptionChange = (index: number, value: string) => {
+    const newOptions = [...pollOptions];
+    newOptions[index] = value;
+    setPollOptions(newOptions);
   };
 
   const onTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value;
-    const cursorPosition = e.target.selectionStart;
-    const textBeforeCursor = value.slice(0, cursorPosition);
-    const mentionMatch = textBeforeCursor.match(/@([\w\s/]*)$/);
+    setContent(value);
 
-    if (mentionMatch) {
+    // Simple @ mention logic for categories
+    const lastAtPos = value.lastIndexOf("@");
+    if (lastAtPos !== -1 && lastAtPos >= value.length - 20) {
+      const query = value.substring(lastAtPos + 1).toLowerCase();
+      const filtered = POST_CATEGORIES.filter(cat => cat.toLowerCase().includes(query));
+      setFilteredCategories(filtered as unknown as string[]);
       setIsMentioning(true);
-      setMentionQuery(mentionMatch[1]);
     } else {
       setIsMentioning(false);
-      setMentionQuery("");
     }
   };
 
-  const selectCategory = (category: string) => {
-    const value = form.getValues("content");
-    const cursorPosition = textareaRef.current?.selectionStart || 0;
-    const textBeforeCursor = value.slice(0, cursorPosition);
-    const textAfterCursor = value.slice(cursorPosition);
-
-    const newValue = textBeforeCursor.replace(/@([\w\s/]*)$/, `@${category} `) + textAfterCursor;
-    form.setValue("content", newValue);
-    form.setValue("category", category as any);
+  const selectCategory = (cat: string) => {
+    const lastAtPos = content.lastIndexOf("@");
+    const newContent = content.substring(0, lastAtPos) + cat + " ";
+    setContent(newContent);
+    form.setValue("content", newContent);
+    form.setValue("category", cat);
     setIsMentioning(false);
-    setMentionQuery("");
-    textareaRef.current?.focus();
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'image' | 'file') => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Mock upload - in real app would upload to S3/Cloudinary
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setAttachments([...attachments, { type, name: file.name, url: reader.result }]);
+    };
+    reader.readAsDataURL(file);
   };
 
   const onSubmit = (data: any) => {
-    // If no category is selected, default to "General Experience"
     if (!data.category) {
       data.category = "General Experience";
     }
 
-    createPost.mutate({ ...data, attachments }, {
+    const pollData = showPoll && pollQuestion && pollOptions.every(o => o.trim())
+      ? { question: pollQuestion, options: pollOptions.filter(o => o.trim()) }
+      : undefined;
+
+    createPost.mutate({ ...data, attachments, pollData }, {
       onSuccess: () => {
         setOpen(false);
         setAttachments([]);
+        setShowPoll(false);
+        setPollQuestion("");
+        setPollOptions(["", ""]);
         form.reset();
         toast({
           title: "Posted successfully",
@@ -136,7 +154,7 @@ export function CreatePostDialog() {
           Start a Discussion
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-xl rounded-2xl border-none shadow-2xl">
+      <DialogContent className="sm:max-w-xl rounded-2xl border-none shadow-2xl overflow-y-auto max-h-[90vh]">
         <DialogHeader>
           <DialogTitle className="text-2xl font-display text-primary">Share your thoughts</DialogTitle>
         </DialogHeader>
@@ -146,13 +164,76 @@ export function CreatePostDialog() {
             <Label>Your Message</Label>
             <Textarea
               placeholder="What's on your mind? Type @ to select a community (Mental Stress, Toxic Culture, etc.)..."
-              className="min-h-[150px] resize-none rounded-xl border-2 p-4 focus:ring-primary/20"
+              className="min-h-[120px] resize-none rounded-xl border-2 p-4 focus:ring-primary/20"
+              value={content}
               {...form.register("content", { onChange: onTextareaChange })}
               ref={(e) => {
                 form.register("content").ref(e);
                 (textareaRef as any).current = e;
               }}
             />
+
+            {showPoll && (
+              <div className="mt-4 p-4 rounded-xl border-2 border-primary/20 bg-primary/5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-primary font-bold flex items-center gap-2">
+                    <BarChart2 className="w-4 h-4" />
+                    Interactive Poll
+                  </Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={() => setShowPoll(false)}
+                  >
+                    Remove Poll
+                  </Button>
+                </div>
+
+                <div className="space-y-3">
+                  <Input
+                    placeholder="Poll Question"
+                    className="bg-background border-primary/10"
+                    value={pollQuestion}
+                    onChange={(e) => setPollQuestion(e.target.value)}
+                  />
+
+                  {pollOptions.map((option, index) => (
+                    <div key={index} className="flex gap-2">
+                      <Input
+                        placeholder={`Option ${index + 1}`}
+                        className="bg-background border-primary/5"
+                        value={option}
+                        onChange={(e) => handleOptionChange(index, e.target.value)}
+                      />
+                      {pollOptions.length > 2 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => handleRemoveOption(index)}
+                        >
+                          <MinusCircle className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+
+                  {pollOptions.length < 5 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-2 border-dashed border-primary/30 text-primary hover:bg-primary/5"
+                      onClick={handleAddOption}
+                    >
+                      <PlusCircle className="w-4 h-4" />
+                      Add Option
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {isMentioning && filteredCategories.length > 0 && (
               <div className="absolute z-50 bg-popover border rounded-lg shadow-lg w-full max-h-48 overflow-y-auto mt-1 p-1">
@@ -172,30 +253,9 @@ export function CreatePostDialog() {
             {form.formState.errors.content && (
               <p className="text-sm text-destructive">{form.formState.errors.content.message}</p>
             )}
-            {form.getValues("category") && (
-              <p className="text-xs text-primary font-medium">Selected Community: {form.getValues("category")}</p>
-            )}
           </div>
 
-          {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {attachments.map((file, i) => (
-                <div key={i} className="relative group p-2 border rounded-lg bg-muted/30 flex items-center gap-2 pr-8">
-                  {file.type === 'image' ? <Image className="w-4 h-4" /> : <FileText className="w-4 h-4" />}
-                  <span className="text-xs truncate max-w-[150px]">{file.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(i)}
-                    className="absolute right-1 p-1 rounded-full hover:bg-destructive hover:text-white transition-colors"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Label className="cursor-pointer">
               <input
                 type="file"
@@ -205,21 +265,19 @@ export function CreatePostDialog() {
               />
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-muted transition-colors text-sm font-medium">
                 <Image className="w-4 h-4 text-primary" />
-                Add Image
+                Image
               </div>
             </Label>
-            <Label className="cursor-pointer">
-              <input
-                type="file"
-                className="hidden"
-                accept=".pdf,.doc,.docx,.txt"
-                onChange={(e) => handleFileUpload(e, 'document')}
-              />
-              <div className="flex items-center gap-2 px-3 py-2 rounded-lg border hover:bg-muted transition-colors text-sm font-medium">
-                <FileText className="w-4 h-4 text-primary" />
-                Add Document
-              </div>
-            </Label>
+
+            <Button
+              type="button"
+              variant="outline"
+              className={cn("gap-2 border rounded-lg", showPoll && "bg-primary/10 border-primary text-primary")}
+              onClick={() => setShowPoll(!showPoll)}
+            >
+              <BarChart2 className="w-4 h-4" />
+              Poll
+            </Button>
           </div>
 
           <DialogFooter>

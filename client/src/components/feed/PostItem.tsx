@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useToggleReaction } from "@/hooks/use-posts";
 import { motion, AnimatePresence } from "framer-motion";
 import { Heart } from "lucide-react";
+import { PollCard } from "@/components/PollCard";
 
 // Pre-compute category pattern regex
 const CATEGORY_REGEX = new RegExp(
@@ -31,7 +32,23 @@ const CATEGORY_REGEX = new RegExp(
 );
 
 interface PostItemProps {
-    post: any;
+    post: {
+        id: number;
+        content: string;
+        category: string;
+        createdAt: string | Date | null;
+        authorRole?: string;
+        authorId: string;
+        commentCount?: number;
+        reactionCounts?: { support: number; helpful: number };
+        userReaction?: 'support' | 'helpful' | null;
+        attachments?: any[];
+        pollResults?: {
+            options: { label: string; count: number }[];
+            totalVotes: number;
+            userVoteIndex?: number | null;
+        };
+    };
     fullView?: boolean;
 }
 
@@ -172,6 +189,12 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
                             </Link>
                         )}
                     </div>
+
+                    {post.pollResults && (
+                        <div className="mb-4">
+                            <PollCard postId={post.id} pollResults={post.pollResults} />
+                        </div>
+                    )}
 
                     {post.attachments && post.attachments.length > 0 && (
                         <div className="mb-4 flex flex-wrap gap-3">

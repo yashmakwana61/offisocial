@@ -18,7 +18,13 @@ export function useProfile() {
 export function useCreateProfile() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (data: { role: string; companyName: string; linkedinUrl?: string }) => {
+    mutationFn: async (data: {
+      role: string;
+      companyName: string;
+      linkedinUrl?: string;
+      interests?: string[];
+      persona?: any;
+    }) => {
       const res = await fetch(api.profiles.create.path, {
         method: api.profiles.create.method,
         headers: { "Content-Type": "application/json" },

@@ -4,8 +4,8 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Import Auth Models
-import { users } from "./models/auth.js";
-export * from "./models/auth.js";
+import { users } from "./models/auth";
+export * from "./models/auth";
 
 // === COMPANIES ===
 export const companies = pgTable("companies", {
@@ -44,6 +44,20 @@ export const profiles = pgTable("profiles", {
   lastVerifiedAt: timestamp("last_verified_at").defaultNow(),
   joinedAt: timestamp("joined_at").defaultNow(),
   isExitMode: boolean("is_exit_mode").default(false),
+  interests: text("interests").array(),
+  persona: jsonb("persona"), // { avatarUrl?: string, themeColor?: string }
+  isAdmin: boolean("is_admin").default(false),
+  settings: jsonb("settings").default({
+    notifications: {
+      mentions: true,
+      replies: true,
+      marketing: false
+    },
+    privacy: {
+      showLinkedin: false,
+      dataSharing: true
+    }
+  }),
   isDeleted: boolean("is_deleted").default(false),
   deletedAt: timestamp("deleted_at"),
 });
@@ -64,6 +78,7 @@ export const posts = pgTable("posts", {
   content: text("content").notNull(),
   category: text("category", { enum: POST_CATEGORIES }).notNull(),
   attachments: jsonb("attachments").default([]), // Array of { type, url, name }
+  pollData: jsonb("poll_data"), // { question: string, options: string[] }
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -92,6 +107,17 @@ export const reactions = pgTable("reactions", {
   type: text("type", { enum: ["support", "helpful"] }).notNull(),
 }, (table) => [
   uniqueIndex("reaction_user_target_idx").on(table.userId, table.targetType, table.targetId)
+]);
+
+// === POLL VOTES ===
+export const pollVotes = pgTable("poll_votes", {
+  id: serial("id").primaryKey(),
+  postId: integer("post_id").notNull().references(() => posts.id),
+  userId: text("user_id").notNull(),
+  optionIndex: integer("option_index").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("poll_vote_user_post_idx").on(table.userId, table.postId)
 ]);
 
 // === REPORTS ===
@@ -209,11 +235,50 @@ export const blocks = pgTable("blocks", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// === SALARIES ===
+export const salaries = pgTable("salaries", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(), // Kept private
+  companyId: integer("company_id").notNull().references(() => companies.id),
+  role: text("role").notNull(),
+  location: text("location"),
+  baseSalary: integer("base_salary").notNull(),
+  bonus: integer("bonus").default(0),
+  equity: integer("equity").default(0),
+  currency: text("currency").default("USD"),
+  yearsOfExperience: integer("years_of_experience"),
+  isVerified: boolean("is_verified").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("salaries_company_id_idx").on(table.companyId),
+  index("salaries_role_idx").on(table.role)
+]);
+
 // === NEW ZOD SCHEMAS ===
 export const insertWeeklyCheckinSchema = createInsertSchema(weeklyCheckins).omit({ id: true, createdAt: true, userId: true, companyId: true, weekStartDate: true });
 export const insertChatRequestSchema = createInsertSchema(chatRequests).omit({ id: true, createdAt: true, updatedAt: true, senderIdentityRevealed: true, receiverIdentityRevealed: true });
 export const insertPrivateMessageSchema = createInsertSchema(privateMessages).omit({ id: true, createdAt: true });
 export const insertBlockSchema = createInsertSchema(blocks).omit({ id: true, createdAt: true });
+// === INTERVIEW ARCHIVE ===
+export const interviews = pgTable("interviews", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  companyId: integer("company_id").notNull().references(() => companies.id),
+  role: text("role").notNull(),
+  location: text("location"),
+  difficulty: integer("difficulty").notNull(), // 1-5
+  status: text("status").notNull(), // 'offered', 'rejected', 'pending'
+  content: text("content").notNull(),
+  interviewDate: timestamp("interview_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("interviews_company_id_idx").on(table.companyId),
+  index("interviews_role_idx").on(table.role)
+]);
+
+export const insertInterviewSchema = createInsertSchema(interviews).omit({ id: true, createdAt: true, userId: true });
+export const insertSalarySchema = createInsertSchema(salaries).omit({ id: true, createdAt: true, userId: true, isVerified: true });
+export const insertPollVoteSchema = createInsertSchema(pollVotes).omit({ id: true, createdAt: true, userId: true });
 
 // Keep backward compatibility
 export const insertLinkedinExchangeSchema = insertChatRequestSchema;
@@ -223,9 +288,15 @@ export type WeeklyCheckin = typeof weeklyCheckins.$inferSelect;
 export type ChatRequest = typeof chatRequests.$inferSelect;
 export type PrivateMessage = typeof privateMessages.$inferSelect;
 export type Block = typeof blocks.$inferSelect;
+export type Salary = typeof salaries.$inferSelect;
+export type PollVote = typeof pollVotes.$inferSelect;
+export type Interview = typeof interviews.$inferSelect;
 export type CreateWeeklyCheckinInput = z.infer<typeof insertWeeklyCheckinSchema>;
 export type CreateChatRequestInput = z.infer<typeof insertChatRequestSchema>;
 export type CreatePrivateMessageInput = z.infer<typeof insertPrivateMessageSchema>;
+export type CreateSalaryInput = z.infer<typeof insertSalarySchema>;
+export type CreatePollVoteInput = z.infer<typeof insertPollVoteSchema>;
+export type CreateInterviewInput = z.infer<typeof insertInterviewSchema>;
 
 // Keep backward compatibility
 export type LinkedinExchange = ChatRequest;

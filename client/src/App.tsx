@@ -19,6 +19,10 @@ import Profile from "@/pages/Profile";
 import Stories from "@/pages/Stories";
 import ChatRequests from "@/pages/ChatRequests";
 import ChatPage from "@/pages/ChatPage";
+import SalaryBoard from "@/pages/SalaryBoard";
+import InterviewArchive from "@/pages/InterviewArchive";
+import AdminDashboard from "@/pages/AdminDashboard";
+import Settings from "@/pages/Settings";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading: authLoading } = useAuth();
@@ -79,6 +83,18 @@ function Router() {
       </Route>
       <Route path="/chat-requests">
         <ProtectedRoute component={ChatRequests} />
+      </Route>
+      <Route path="/salaries">
+        <ProtectedRoute component={SalaryBoard} />
+      </Route>
+      <Route path="/interviews">
+        <ProtectedRoute component={InterviewArchive} />
+      </Route>
+      <Route path="/admin">
+        <ProtectedRoute component={AdminDashboard} />
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute component={Settings} />
       </Route>
       <Route path="/chat/:id">
         <ProtectedRoute component={ChatPage} />

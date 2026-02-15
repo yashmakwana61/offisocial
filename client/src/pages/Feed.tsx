@@ -76,7 +76,7 @@ export default function Feed() {
               <span className="text-primary font-extrabold italic">honest work talk.</span>
             </h2>
             <p className="text-muted-foreground text-sm leading-relaxed max-w-lg">
-              SafeSpace is where verified employees share real workplace experiences anonymously.
+              Offisocial is where verified employees share real workplace experiences anonymously.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 pt-2">
               <Button

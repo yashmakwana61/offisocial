@@ -6,16 +6,22 @@ import {
     User,
     Settings,
     HelpCircle,
-    Briefcase
+    Briefcase,
+    DollarSign,
+    ShieldCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
+import { useProfile } from "@/hooks/use-profiles";
 
 interface SidebarProps {
     className?: string;
 }
 
 export function SidebarContent({ onClose }: { onClose?: () => void }) {
+    const { user } = useAuth();
+    const { data: profile } = useProfile();
     const [location] = useLocation();
 
     const NavLink = ({ href, icon: Icon, children }: { href: string; icon: any; children: React.ReactNode }) => {
@@ -63,7 +69,14 @@ export function SidebarContent({ onClose }: { onClose?: () => void }) {
                 </div>
                 <NavLink href="/chat-requests" icon={MessageSquare}>Messages</NavLink>
                 <NavLink href="/profile" icon={User}>Profile</NavLink>
+                <NavLink href="/salaries" icon={DollarSign}>Salaries</NavLink>
+                <NavLink href="/interviews" icon={Briefcase}>Interviews</NavLink>
                 <NavLink href="/jobs" icon={Briefcase}>Jobs</NavLink>
+                <NavLink href="/settings" icon={Settings}>Settings</NavLink>
+
+                {profile?.isAdmin && (
+                    <NavLink href="/admin" icon={ShieldCheck}>Admin Terminal</NavLink>
+                )}
 
                 <div className="mt-6 mb-2 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Resources
