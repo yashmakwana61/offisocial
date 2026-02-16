@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import pkg from "pg";
-import * as schema from "../shared/schema";
+import * as schema from "../shared/schema.js";
 
 const { Pool } = pkg;
 
@@ -28,7 +28,7 @@ if (!pool && process.env.NODE_ENV === "production") {
 
 export const db = pool ? drizzle(pool, { schema }) : null as any;
 
-// Verification check for profiles table (essential for auth)
+// Verification check for profiles table (essential for auth) - wrapped to prevent initialization crash
 if (pool) {
   pool.query(`
     SELECT EXISTS (
@@ -36,14 +36,14 @@ if (pool) {
       WHERE table_name = 'profiles'
     );
   `).then(res => {
-    if (!res.rows[0].exists) {
+    if (res.rows[0] && !res.rows[0].exists) {
       console.error("\n[DB ERROR] 'profiles' table is missing! Auth will fail.");
       console.error("Please run: npm run db:push\n");
     } else {
       console.log("[DB] 'profiles' table verified.");
     }
   }).catch(err => {
-    console.error("[DB] Error checking for tables:", err.message);
+    console.error("[DB] Error checking for tables (non-critical during init):", err.message);
   });
 }
 
