@@ -6,7 +6,8 @@ export default function handler(req: any, res: any) {
             NODE_ENV: process.env.NODE_ENV,
             HAS_DB: !!process.env.DATABASE_URL,
             PORT: process.env.PORT,
-            VERCEL: process.env.VERCEL
+            VERCEL: process.env.VERCEL,
+            nodeVersion: process.version
         },
         time: new Date().toISOString()
     });

@@ -133,6 +133,10 @@ export interface IStorage {
 
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
+    if (!db) {
+      console.warn("[STORAGE] Database not initialized (getUser). Check DATABASE_URL.");
+      return undefined;
+    }
     const [user] = await db.select().from(users).where(eq(users.id, id));
     return user;
   }
@@ -143,6 +147,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
+    if (!db) {
+      throw new Error("Database not initialized");
+    }
     const [user] = await db
       .insert(users)
       .values(userData)
@@ -158,6 +165,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProfile(userId: string): Promise<Profile | undefined> {
+    if (!db) return undefined;
     const [profile] = await db.select().from(profiles).where(
       and(eq(profiles.userId, userId), eq(profiles.isDeleted, false))
     );
@@ -245,6 +253,9 @@ export class DatabaseStorage implements IStorage {
   }
 
   async findOrCreateCompany(name: string): Promise<Company> {
+    if (!db) {
+      throw new Error("Database not initialized");
+    }
     const company = await this.getCompanyByName(name);
     if (company) return company;
 
