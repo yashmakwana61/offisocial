@@ -260,44 +260,42 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
                         </div>
                     )}
 
-                    <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-1 sm:gap-2">
                         <Reactions post={post} />
 
-                        <div className="flex items-center gap-2">
-                            {(!user || post.authorId !== user?.id) && (
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={handleChatRequest}
-                                    className={cn(
-                                        "gap-2 h-8 px-2 transition-colors",
-                                        user ? "text-muted-foreground hover:text-primary hover:bg-primary/5" : "text-muted-foreground/60 opacity-80"
-                                    )}
-                                >
-                                    <Lock className={cn("w-4 h-4", !user && "w-3 h-3 text-muted-foreground/50")} />
-                                    <span className="text-xs font-medium">{user ? "Chat" : "Sign in to Chat"}</span>
-                                </Button>
-                            )}
+                        <Link href={`/posts/${post.id}`}>
+                            <Button variant="ghost" size="sm" className="gap-1.5 h-7 sm:h-8 px-2 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/5">
+                                <MessageCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                <span className="text-[10px] sm:text-xs font-medium">
+                                    {post.commentCount || 0}
+                                </span>
+                            </Button>
+                        </Link>
 
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleShare}
+                            className="gap-1.5 h-7 sm:h-8 px-2 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/5"
+                        >
+                            <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                            <span className="text-[10px] sm:text-xs font-medium">Share</span>
+                        </Button>
+
+                        {(!user || post.authorId !== user?.id) && (
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={handleShare}
-                                className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5"
+                                onClick={handleChatRequest}
+                                className={cn(
+                                    "gap-1.5 h-7 sm:h-8 px-2 rounded-full transition-colors ml-auto",
+                                    user ? "text-muted-foreground hover:text-primary hover:bg-primary/5" : "text-muted-foreground/60 opacity-80"
+                                )}
                             >
-                                <Share2 className="w-4 h-4" />
-                                <span className="text-xs font-medium">Share</span>
+                                <Lock className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4", !user && "w-3 h-3 text-muted-foreground/50")} />
+                                <span className="text-[10px] sm:text-xs font-medium">{user ? "Chat" : "Sign in to Chat"}</span>
                             </Button>
-
-                            <Link href={`/posts/${post.id}`}>
-                                <Button variant="ghost" size="sm" className="gap-2 h-8 px-2 text-muted-foreground hover:text-primary hover:bg-primary/5">
-                                    <MessageCircle className="w-4 h-4" />
-                                    <span className="text-xs font-medium">
-                                        {post.commentCount || 0}
-                                    </span>
-                                </Button>
-                            </Link>
-                        </div>
+                        )}
                     </div>
                 </div>
             </Card>

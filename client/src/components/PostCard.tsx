@@ -25,8 +25,8 @@ interface PostCardProps {
     category: string;
     createdAt: string | Date | null;
     commentCount: number;
-    reactionCounts: { support: number; helpful: number };
-    userReaction: 'support' | 'helpful' | null;
+    reactionCounts: { support: number };
+    userReaction: 'support' | null;
     attachments?: { type: 'image' | 'document'; url: string; name: string }[];
     pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
     authorId?: string; // Added to check if it's own post
@@ -40,7 +40,7 @@ export function PostCard({ post, compact = false }: PostCardProps) {
   const { toast } = useToast();
   const [isChatRequestOpen, setIsChatRequestOpen] = useState(false);
 
-  const handleReaction = (type: 'support' | 'helpful') => {
+  const handleReaction = (type: 'support') => {
     if (!user) {
       window.location.href = "/api/auth/linkedin";
       return;
@@ -162,7 +162,7 @@ export function PostCard({ post, compact = false }: PostCardProps) {
           </div>
         )}
 
-        <div className="flex items-center gap-4 mt-6 pt-4 border-t border-border/30">
+        <div className="flex items-center gap-2 mt-6 pt-4 border-t border-border/30">
           <Button
             variant="ghost"
             size="sm"
@@ -176,46 +176,33 @@ export function PostCard({ post, compact = false }: PostCardProps) {
             <span className="text-xs font-medium">{post.reactionCounts.support || "Support"}</span>
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => handleReaction('helpful')}
-            className={cn(
-              "gap-2 rounded-full px-3 transition-colors",
-              post.userReaction === 'helpful' ? "bg-amber-50 text-amber-600 hover:bg-amber-100" : "text-muted-foreground hover:text-amber-500 hover:bg-amber-50"
-            )}
-          >
-            <Lightbulb className={cn("w-4 h-4", post.userReaction === 'helpful' && "fill-current")} />
-            <span className="text-xs font-medium">{post.reactionCounts.helpful || "Helpful"}</span>
-          </Button>
-
-          <div className="ml-auto flex gap-2">
-            {!compact && post.authorId !== user?.id && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleChatRequest}
-                className="gap-2 rounded-full px-3 text-muted-foreground hover:text-primary hover:bg-primary/5"
-              >
-                <Lock className="w-4 h-4" />
-                <span className="text-xs font-medium">Chat</span>
+          {compact ? (
+            <Link href={`/posts/${post.id}`}>
+              <Button variant="ghost" size="sm" className="gap-2 rounded-full px-3 text-muted-foreground hover:text-primary hover:bg-primary/5">
+                <MessageCircle className="w-4 h-4" />
+                <span className="text-xs font-medium">{post.commentCount > 0 ? `${post.commentCount}` : ""}</span>
               </Button>
-            )}
-
-            {compact ? (
-              <Link href={`/posts/${post.id}`}>
-                <Button variant="ghost" size="sm" className="gap-2 rounded-full px-3 text-muted-foreground hover:text-primary hover:bg-primary/5">
-                  <MessageCircle className="w-4 h-4" />
-                  <span className="text-xs font-medium">{post.commentCount > 0 ? `${post.commentCount}` : ""}</span>
-                </Button>
-              </Link>
-            ) : (
-              <div className="flex items-center gap-2 px-3 text-muted-foreground">
+            </Link>
+          ) : (
+            <Link href={`/posts/${post.id}`}>
+              <Button variant="ghost" size="sm" className="gap-2 rounded-full px-3 text-muted-foreground hover:text-primary hover:bg-primary/5">
                 <MessageCircle className="w-4 h-4" />
                 <span className="text-xs font-medium">{post.commentCount} {post.commentCount === 1 ? 'Comment' : 'Comments'}</span>
-              </div>
-            )}
-          </div>
+              </Button>
+            </Link>
+          )}
+
+          {!compact && post.authorId !== user?.id && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleChatRequest}
+              className="gap-2 rounded-full px-3 text-muted-foreground hover:text-primary hover:bg-primary/5 ml-auto"
+            >
+              <Lock className="w-4 h-4" />
+              <span className="text-xs font-medium">Chat</span>
+            </Button>
+          )}
         </div>
       </div>
 

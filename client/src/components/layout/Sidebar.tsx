@@ -71,7 +71,7 @@ export function SidebarContent({ onClose }: { onClose?: () => void }) {
                 <NavLink href="/profile" icon={User}>Profile</NavLink>
                 <NavLink href="/salaries" icon={DollarSign}>Salaries</NavLink>
                 <NavLink href="/interviews" icon={Briefcase}>Interviews</NavLink>
-                <NavLink href="/jobs" icon={Briefcase}>Jobs</NavLink>
+
                 <NavLink href="/settings" icon={Settings}>Settings</NavLink>
 
                 {profile?.isAdmin && (
