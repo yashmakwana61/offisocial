@@ -3,9 +3,9 @@ import { companies, profiles, posts, comments, reactions, pollVotes, reports, we
 
 
 
-import { db } from "./db";
+import { db } from "./db.js";
 import { eq, and, desc, sql, inArray, like } from "drizzle-orm";
-import { redis } from "./redis";
+import { redis } from "./redis.js";
 
 function maskEmail(email: string | null): string {
   if (!email) return "***@***.***";

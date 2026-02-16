@@ -29,7 +29,7 @@ if (!pool && process.env.NODE_ENV === "production") {
 export const db = pool ? drizzle(pool, { schema }) : null as any;
 
 // Verification check for profiles table (essential for auth) - wrapped to prevent initialization crash
-if (pool) {
+if (pool && process.env.NODE_ENV !== "production") {
   pool.query(`
     SELECT EXISTS (
       SELECT FROM information_schema.tables 
