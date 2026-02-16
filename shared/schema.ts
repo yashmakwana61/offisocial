@@ -4,7 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // Import Auth Models
-import { users } from "./models/auth.js";
+import { users } from "./models/auth";
 export * from "./models/auth";
 
 // === COMPANIES ===
