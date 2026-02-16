@@ -675,7 +675,23 @@ export async function registerRoutes(
   app.post(api.admin.reports.resolve.path, isAdminMiddleware, async (req: Request, res: Response) => {
     const id = Number(req.params.id);
     const { resolution } = api.admin.reports.resolve.input.parse(req.body);
+
+    // Get report details to know what content to remove
+    const [report] = await db.select().from(reports).where(eq(reports.id, id));
+    if (!report) {
+      return res.status(404).json({ message: "Report not found" });
+    }
+
     await db.update(reports).set({ status: resolution }).where(eq(reports.id, id));
+
+    if (resolution === 'resolved') {
+      if (report.targetType === 'post') {
+        await storage.deletePost(report.targetId);
+      } else if (report.targetType === 'comment') {
+        await storage.deleteComment(report.targetId);
+      }
+    }
+
     res.json({ success: true });
   });
 

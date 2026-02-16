@@ -65,6 +65,8 @@ export interface IStorage {
     pollResults?: { options: { label: string; count: number }[]; totalVotes: number; userVoteIndex?: number | null };
   }) | undefined>;
   createPost(userId: string, companyId: number, post: CreatePostInput & { attachments?: any[], pollData?: any }): Promise<Post>;
+  deletePost(id: number): Promise<void>;
+  deleteComment(id: number): Promise<void>;
 
   // Polls
   votePoll(userId: string, postId: number, optionIndex: number): Promise<void>;
@@ -393,7 +395,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getCompanyPosts(companyId: number, userId: string, category?: string, limit = 20, offset = 0, searchQuery?: string): Promise<any[]> {
-    const conditions = [eq(posts.companyId, companyId)];
+    const conditions = [eq(posts.companyId, companyId), eq(posts.isDeleted, false)];
     if (category) {
       conditions.push(eq(posts.category, category as any));
     }
@@ -493,7 +495,7 @@ export class DatabaseStorage implements IStorage {
       "General Experience",
     ];
 
-    const conditions = [];
+    const conditions = [eq(posts.isDeleted, false)];
     if (category) {
       conditions.push(eq(posts.category, category as any));
     } else {
@@ -583,7 +585,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPost(id: number, userId: string): Promise<any | undefined> {
-    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    const [post] = await db.select().from(posts).where(and(eq(posts.id, id), eq(posts.isDeleted, false)));
     if (!post) return undefined;
 
     const reactionStats = await this.getReactionStats('post', post.id, userId);
@@ -600,7 +602,7 @@ export class DatabaseStorage implements IStorage {
 
 
   async getPublicPost(id: number, userId?: string): Promise<any | undefined> {
-    const [post] = await db.select().from(posts).where(eq(posts.id, id));
+    const [post] = await db.select().from(posts).where(and(eq(posts.id, id), eq(posts.isDeleted, false)));
     if (!post) return undefined;
 
     const safeCategories = [
@@ -636,7 +638,7 @@ export class DatabaseStorage implements IStorage {
     })
       .from(comments)
       .leftJoin(profiles, eq(comments.authorId, profiles.userId))
-      .where(eq(comments.postId, id))
+      .where(and(eq(comments.postId, id), eq(comments.isDeleted, false)))
       .orderBy(desc(comments.createdAt));
 
     const enrichedComments = commentsList.map((item: any) => {
@@ -684,7 +686,7 @@ export class DatabaseStorage implements IStorage {
       userReaction: sql<string | null>`(SELECT ${reactions.type} FROM ${reactions} WHERE ${reactions.targetId} = ${comments.id} AND ${reactions.targetType} = 'comment' AND ${reactions.userId} = ${userId} LIMIT 1)`,
     })
       .from(comments)
-      .where(eq(comments.postId, postId))
+      .where(and(eq(comments.postId, postId), eq(comments.isDeleted, false)))
       .orderBy(desc(comments.createdAt));
 
     return commentsList.map((item: any) => ({
@@ -1132,6 +1134,20 @@ export class DatabaseStorage implements IStorage {
       .where(eq(profiles.userId, userId))
       .returning();
     return profile;
+  }
+
+  async deletePost(id: number): Promise<void> {
+    await db.update(posts).set({ isDeleted: true }).where(eq(posts.id, id));
+    if (redis) {
+      await this.clearPublicPostsCache();
+    }
+  }
+
+  async deleteComment(id: number): Promise<void> {
+    await db.update(comments).set({ isDeleted: true }).where(eq(comments.id, id));
+    if (redis) {
+      await this.clearPublicPostsCache();
+    }
   }
 }
 

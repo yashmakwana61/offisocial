@@ -81,6 +81,7 @@ export const posts = pgTable("posts", {
   pollData: jsonb("poll_data"), // { question: string, options: string[] }
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  isDeleted: boolean("is_deleted").default(false),
 }, (table) => [
   index("posts_company_id_idx").on(table.companyId),
   index("posts_category_idx").on(table.category),
@@ -95,6 +96,7 @@ export const comments = pgTable("comments", {
   authorId: text("author_id").notNull(), // FK to users.id
   content: text("content").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
+  isDeleted: boolean("is_deleted").default(false),
 }, (table) => [
   index("comments_post_id_idx").on(table.postId),
   index("comments_author_id_idx").on(table.authorId)
