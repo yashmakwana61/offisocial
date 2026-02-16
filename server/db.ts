@@ -1,8 +1,8 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import pkg from "pg";
+import pg from "pg";
 import * as schema from "../shared/schema.js";
 
-const { Pool } = pkg;
+const { Pool } = pg;
 
 // We initialize these lazily or allow them to be undefined if DB_URL is missing
 // to prevent top-level crashes in environments like Vercel (during build or if env is missing)
