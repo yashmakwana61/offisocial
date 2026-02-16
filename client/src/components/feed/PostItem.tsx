@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
-import { POST_CATEGORIES } from "@shared/schema";
+import { POST_CATEGORIES, type Post, type Attachment } from "@shared/schema";
 import Reactions from "./Reactions";
 import { UserCircle, MoreHorizontal, Flag, FileText, MessageCircle, Lock, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,17 +32,12 @@ const CATEGORY_REGEX = new RegExp(
 );
 
 interface PostItemProps {
-    post: {
-        id: number;
-        content: string;
-        category: string;
-        createdAt: string | Date | null;
-        authorRole?: string;
-        authorId: string;
+    post: Omit<Post, 'authorId' | 'companyId'> & {
+        authorId?: string;
+        authorRole?: string | null;
         commentCount?: number;
         reactionCounts?: { support: number; helpful: number };
         userReaction?: 'support' | 'helpful' | null;
-        attachments?: any[];
         pollResults?: {
             options: { label: string; count: number }[];
             totalVotes: number;
@@ -236,7 +231,8 @@ const PostItem = memo(function PostItem({ post, fullView = false }: PostItemProp
 
                     {post.attachments && post.attachments.length > 0 && (
                         <div className="mb-4 flex flex-wrap gap-3">
-                            {post.attachments.map((file: any, i: number) => (
+                            {(post.attachments as Attachment[]).map((file, i) => (
+
                                 <div key={i} className="max-w-full">
                                     {file.type === 'image' ? (
                                         <img

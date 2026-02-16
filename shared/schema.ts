@@ -71,14 +71,27 @@ export const POST_CATEGORIES = [
   "Policy / Work Discussion",
 ] as const;
 
+export interface Attachment {
+  type: "image" | "document";
+  url: string;
+  name?: string;
+  size?: number;
+}
+
+export interface PollData {
+  question: string;
+  options: string[];
+}
+
+
 export const posts = pgTable("posts", {
   id: serial("id").primaryKey(),
   companyId: integer("company_id").notNull().references(() => companies.id),
   authorId: text("author_id").notNull(), // FK to users.id (kept private in API)
   content: text("content").notNull(),
   category: text("category", { enum: POST_CATEGORIES }).notNull().default("General"),
-  attachments: jsonb("attachments").default([]), // Array of { type, url, name }
-  pollData: jsonb("poll_data"), // { question: string, options: string[] }
+  attachments: jsonb("attachments").$type<Attachment[]>().default([]), // Array of { type, url, name }
+  pollData: jsonb("poll_data").$type<PollData>(), // { question: string, options: string[] }
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   isDeleted: boolean("is_deleted").default(false),

@@ -1,10 +1,8 @@
-import {
-  users, profiles, companies, posts, comments, reactions, reports, sessions, weeklyCheckins, linkedinExchanges, chatRequests, privateMessages, blocks, salaries, interviews, pollVotes,
-  type User, type Profile, type Company, type Post, type Comment, type Reaction, type Report,
-  type CreatePostInput, type CreateCommentInput, type CreateWeeklyCheckinInput, type CreateSalaryInput, type CreateInterviewInput,
-  type WeeklyCheckin, type LinkedinExchange, type ChatRequest, type PrivateMessage, type Block, type Salary, type Interview, type PollVote,
-  type UpsertUser
-} from "../shared/schema.js";
+import { companies, profiles, posts, comments, reactions, pollVotes, reports, weeklyCheckins, chatRequests, privateMessages, blocks, salaries, interviews, users, sessions, type Company, type Profile, type Post, type Comment, type Reaction, type Report, type WeeklyCheckin, type ChatRequest, type PrivateMessage, type Block, type Salary, type Interview, type PollVote, type User, type UpsertUser, type CreatePostInput, type CreateCommentInput, type CreateWeeklyCheckinInput, type CreateChatRequestInput, type CreatePrivateMessageInput, type CreateSalaryInput, type CreatePollVoteInput, type CreateInterviewInput, type Attachment, type PollData, type LinkedinExchange } from "@shared/schema";
+
+
+
+
 import { db } from "./db.js";
 import { eq, and, desc, sql, inArray, like } from "drizzle-orm";
 import { redis } from "./redis.js";
@@ -232,7 +230,7 @@ export class DatabaseStorage implements IStorage {
     // Delete all sessions where the user ID is in the session data
     // The sess column is jsonb and contains user.id
     await db.delete(sessions).where(
-      sql`${sessions.sess}::jsonb->'passport'->'user'->>'id' = ${userId}`
+      sql`${sessions.sess}:: jsonb -> 'passport' -> 'user' ->> 'id' = ${userId} `
     );
   }
 
@@ -401,7 +399,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (searchQuery) {
-      const searchTerms = `%${searchQuery.toLowerCase()}%`;
+      const searchTerms = `% ${searchQuery.toLowerCase()}% `;
       conditions.push(
         sql`(${posts.content} ILIKE ${searchTerms} OR ${posts.category} ILIKE ${searchTerms})`
       );
@@ -422,7 +420,8 @@ export class DatabaseStorage implements IStorage {
       .limit(limit)
       .offset(offset);
 
-    const postIds = postsList.map(item => item.post.id);
+    const postIds = postsList.map((item: any) => item.post.id);
+
     const votes = postIds.length > 0
       ? await db.select().from(pollVotes).where(inArray(pollVotes.postId, postIds))
       : [];
@@ -437,18 +436,18 @@ export class DatabaseStorage implements IStorage {
         sanitizedContent = sanitizedContent.replace(regex, "[REDACTED]");
       });
 
-      const postVotes = votes.filter(v => v.postId === item.post.id);
-      const pollData = item.post.pollData as { question: string, options: string[] } | null;
+      const postVotes = votes.filter((v: any) => v.postId === item.post.id);
+      const pollData = item.post.pollData as PollData | null;
 
       let pollResults = undefined;
       if (pollData) {
         pollResults = {
-          options: pollData.options.map((option, index) => ({
+          options: pollData.options.map((option: string, index: number) => ({
             label: option,
-            count: postVotes.filter(v => v.optionIndex === index).length,
+            count: postVotes.filter((v: any) => v.optionIndex === index).length,
           })),
           totalVotes: postVotes.length,
-          userVoteIndex: userId ? postVotes.find(v => v.userId === userId)?.optionIndex ?? null : null,
+          userVoteIndex: userId ? postVotes.find((v: any) => v.userId === userId)?.optionIndex ?? null : null,
         };
       }
 
@@ -473,7 +472,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPublicPosts(category?: string, limit = 20, offset = 0, userId?: string, searchQuery?: string): Promise<any[]> {
-    const cacheKey = `posts:public:${category || 'all'}:${limit}:${offset}:${searchQuery || 'none'}:${userId || 'guest'}`;
+    const cacheKey = `posts: public:${category || 'all'}:${limit}:${offset}:${searchQuery || 'none'}:${userId || 'guest'} `;
 
     if (redis) {
       try {
@@ -503,7 +502,7 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (searchQuery) {
-      const searchTerms = `%${searchQuery.toLowerCase()}%`;
+      const searchTerms = `% ${searchQuery.toLowerCase()} % `;
       conditions.push(
         sql`(${posts.content} ILIKE ${searchTerms} OR ${posts.category} ILIKE ${searchTerms})`
       );
@@ -526,7 +525,7 @@ export class DatabaseStorage implements IStorage {
 
     // Fetch company names with cache
     const allCompanies = await this.getCompanyNamesWithCache();
-    const postIds = postsList.map(item => item.post.id);
+    const postIds = postsList.map((item: any) => item.post.id);
     const votes = postIds.length > 0
       ? await db.select().from(pollVotes).where(inArray(pollVotes.postId, postIds))
       : [];
@@ -538,18 +537,18 @@ export class DatabaseStorage implements IStorage {
         sanitizedContent = sanitizedContent.replace(regex, "[REDACTED]");
       });
 
-      const postVotes = votes.filter(v => v.postId === item.post.id);
-      const pollData = item.post.pollData as { question: string, options: string[] } | null;
+      const postVotes = votes.filter((v: any) => v.postId === item.post.id);
+      const pollData = item.post.pollData as PollData | null;
 
       let pollResults = undefined;
       if (pollData) {
         pollResults = {
-          options: pollData.options.map((option, index) => ({
+          options: pollData.options.map((option: string, index: number) => ({
             label: option,
-            count: postVotes.filter(v => v.optionIndex === index).length,
+            count: postVotes.filter((v: any) => v.optionIndex === index).length,
           })),
           totalVotes: postVotes.length,
-          userVoteIndex: userId ? postVotes.find(v => v.userId === userId)?.optionIndex ?? null : null,
+          userVoteIndex: userId ? postVotes.find((v: any) => v.userId === userId)?.optionIndex ?? null : null,
         };
       }
 
@@ -744,19 +743,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async toggleReaction(userId: string, targetType: 'post' | 'comment', targetId: number, type: 'support' | 'helpful'): Promise<{ action: 'added' | 'removed' }> {
-    console.log(`[STORAGE] toggleReaction: user=${userId}, target=${targetType}:${targetId}, type=${type}`);
+    console.log(`[STORAGE] toggleReaction: user = ${userId}, target = ${targetType}:${targetId}, type = ${type} `);
 
     // Check if target exists
     if (targetType === 'post') {
       const [post] = await db.select().from(posts).where(eq(posts.id, targetId));
       if (!post) {
-        console.error(`[STORAGE] Reaction target not found: ${targetType}:${targetId}`);
+        console.error(`[STORAGE] Reaction target not found: ${targetType}:${targetId} `);
         throw new Error("Post not found");
       }
     } else {
       const [comment] = await db.select().from(comments).where(eq(comments.id, targetId));
       if (!comment) {
-        console.error(`[STORAGE] Reaction target not found: ${targetType}:${targetId}`);
+        console.error(`[STORAGE] Reaction target not found: ${targetType}:${targetId} `);
         throw new Error("Comment not found");
       }
     }
@@ -769,18 +768,18 @@ export class DatabaseStorage implements IStorage {
 
     if (existing) {
       if (existing.type === type) {
-        console.log(`[STORAGE] Removing existing ${type} reaction for ${userId} on ${targetType}:${targetId}`);
+        console.log(`[STORAGE] Removing existing ${type} reaction for ${userId} on ${targetType}:${targetId} `);
         // Toggle off
         await db.delete(reactions).where(eq(reactions.id, existing.id));
         return { action: 'removed' };
       } else {
-        console.log(`[STORAGE] Changing reaction type from ${existing.type} to ${type} for ${userId} on ${targetType}:${targetId}`);
+        console.log(`[STORAGE] Changing reaction type from ${existing.type} to ${type} for ${userId} on ${targetType}:${targetId} `);
         // Change type
         await db.update(reactions).set({ type }).where(eq(reactions.id, existing.id));
         return { action: 'added' };
       }
     } else {
-      console.log(`[STORAGE] Adding new ${type} reaction for ${userId} on ${targetType}:${targetId}`);
+      console.log(`[STORAGE] Adding new ${type} reaction for ${userId} on ${targetType}:${targetId} `);
       // Add new
       await db.insert(reactions).values({
         userId,
@@ -887,18 +886,18 @@ export class DatabaseStorage implements IStorage {
       .from(chatRequests)
       .leftJoin(sql`${profiles} p1`, eq(chatRequests.requesterId, sql`p1.user_id`))
       .leftJoin(sql`${profiles} p2`, eq(chatRequests.recipientId, sql`p2.user_id`))
-      .where(sql`${chatRequests.requesterId} = ${userId} OR ${chatRequests.recipientId} = ${userId}`)
+      .where(sql`${chatRequests.requesterId} = ${userId} OR ${chatRequests.recipientId} = ${userId} `)
       .orderBy(desc(chatRequests.createdAt));
 
     // For requests with mutual reveal, we need more details
-    const mutualRevealRequests = requestsList.filter(r => r.request.senderIdentityRevealed && r.request.receiverIdentityRevealed);
+    const mutualRevealRequests = requestsList.filter((r: any) => r.request.senderIdentityRevealed && r.request.receiverIdentityRevealed);
 
     // Batch fetch users and profiles if needed
-    const otherUserIds = mutualRevealRequests.map(r => r.request.requesterId === userId ? r.request.recipientId : r.request.requesterId);
+    const otherUserIds = mutualRevealRequests.map((r: any) => r.request.requesterId === userId ? r.request.recipientId : r.request.requesterId);
     const usersBatch = otherUserIds.length > 0 ? await db.select().from(users).where(inArray(users.id, otherUserIds)) : [];
 
     // Batch fetch companies if needed
-    const companyIds = Array.from(new Set(mutualRevealRequests.map(r => r.request.requesterId === userId ? r.recipientCompanyId : r.requesterCompanyId).filter(Boolean)));
+    const companyIds = Array.from(new Set(mutualRevealRequests.map((r: any) => r.request.requesterId === userId ? r.recipientCompanyId : r.requesterCompanyId).filter(Boolean))) as number[];
     const companiesBatch = companyIds.length > 0 ? await db.select().from(companies).where(inArray(companies.id, companyIds)) : [];
 
     return requestsList.map((item: any) => {
@@ -910,8 +909,8 @@ export class DatabaseStorage implements IStorage {
 
       let otherUserProfile = undefined;
       if (req.senderIdentityRevealed && req.receiverIdentityRevealed) {
-        const otherUser = usersBatch.find(u => u.id === otherUserId);
-        const company = companiesBatch.find(c => c.id === otherUserCompanyId);
+        const otherUser = usersBatch.find((u: any) => u.id === otherUserId);
+        const company = companiesBatch.find((c: any) => c.id === otherUserCompanyId);
 
         otherUserProfile = {
           userId: otherUserId,
@@ -1022,15 +1021,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async searchCompanies(query: string): Promise<Company[]> {
-    return await db.select().from(companies).where(like(sql`lower(${companies.name})`, `%${query.toLowerCase()}%`)).limit(10);
+    return await db.select().from(companies).where(like(sql`lower(${companies.name})`, ` % ${query.toLowerCase()}% `)).limit(10);
   }
 
   async getSalaries(companyId?: number, role?: string): Promise<any[]> {
     const conditions = [];
     if (companyId) conditions.push(eq(salaries.companyId, companyId));
     if (role) {
-      const searchTerms = `%${role.toLowerCase()}%`;
-      conditions.push(sql`lower(${salaries.role}) LIKE ${searchTerms}`);
+      const searchTerms = `% ${role.toLowerCase()}% `;
+      conditions.push(sql`lower(${salaries.role}) LIKE ${searchTerms} `);
     }
 
     const results = await db.select({
@@ -1093,8 +1092,8 @@ export class DatabaseStorage implements IStorage {
     const conditions = [];
     if (companyId) conditions.push(eq(interviews.companyId, companyId));
     if (role) {
-      const searchTerms = `%${role.toLowerCase()}%`;
-      conditions.push(sql`lower(${interviews.role}) LIKE ${searchTerms}`);
+      const searchTerms = `% ${role.toLowerCase()}% `;
+      conditions.push(sql`lower(${interviews.role}) LIKE ${searchTerms} `);
     }
 
     const results = await db.select({
