@@ -1,5 +1,5 @@
 import { createApp } from "./app.js";
-import { seedDatabase } from "./seed.js";
+// seedDatabase removed as per request
 import { serveStatic } from "./static.js";
 import { createServer } from "http";
 
@@ -26,7 +26,8 @@ export function log(message: string, source = "express") {
   // The only loss is if something INSIDE registerRoutes relied on httpServer (like socket.io).
   // We verified no websockets. So this is fine.
 
-  await seedDatabase();
+  // Seeding removed
+  // await seedDatabase();
 
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
@@ -57,3 +58,8 @@ export function log(message: string, source = "express") {
     },
   );
 })();
+// Add error handling to prevent crash
+// .catch((err) => {
+//   console.error("Failed to start server:", err);
+//   // process.exit(1); // Don't exit, might recover or just log
+// });

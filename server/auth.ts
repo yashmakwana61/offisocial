@@ -24,13 +24,20 @@ export function getSession() {
     } else {
         console.log("[AUTH] Redis not configured, falling back to PostgreSQL session store.");
         const databaseUrl = process.env.DATABASE_URL?.trim();
-        const pgStore = connectPg(session);
-        sessionStore = new pgStore({
-            conString: databaseUrl,
-            createTableIfMissing: false,
-            ttl: sessionTtl,
-            tableName: "sessions",
-        });
+        if (!databaseUrl) {
+            console.warn("[AUTH] CRITICAL: DATABASE_URL is missing. Session persistence will be disabled.");
+            sessionStore = new (require("memorystore")(session))({
+                checkPeriod: 86400000 // prune expired entries every 24h
+            });
+        } else {
+            const pgStore = connectPg(session);
+            sessionStore = new pgStore({
+                conString: databaseUrl,
+                createTableIfMissing: false,
+                ttl: sessionTtl,
+                tableName: "sessions",
+            });
+        }
     }
 
     return session({
